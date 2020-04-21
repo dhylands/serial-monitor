@@ -1,25 +1,20 @@
-#![recursion_limit = "256"]
-
-use std::io::Write;
-
-use futures::{future::FutureExt, select, StreamExt};
+#![recursion_limit = "256"] // Needed for select!
 
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
-
+use futures::{future::FutureExt, select, StreamExt};
 use serialport::{
     DataBits, FlowControl, Parity, SerialPort, SerialPortInfo, SerialPortType, StopBits,
     UsbPortInfo,
 };
+use std::io::Write;
 use structopt::StructOpt;
-
 use tokio_util::codec::{BytesCodec, Decoder};
 use wildmatch::WildMatch;
 
 mod error;
-
 use error::{ProgramError, Result};
 
 #[derive(StructOpt, Debug)]
@@ -74,6 +69,8 @@ struct Opt {
     product: Option<String>,
 }
 
+// Returns the lowercase version of the character which will cause
+// serial-monitor to exit.
 fn exit_char(opt: &Opt) -> char {
     if opt.ctrl_y_exit {
         'y'
@@ -82,6 +79,8 @@ fn exit_char(opt: &Opt) -> char {
     }
 }
 
+// Returns the Event::Key variant of the exit character which will
+// cause the serial monitor to exit.
 fn exit_code(opt: &Opt) -> Event {
     Event::Key(KeyEvent {
         code: KeyCode::Char(exit_char(opt)),
@@ -89,10 +88,13 @@ fn exit_code(opt: &Opt) -> Event {
     })
 }
 
+// Returns a human readable string of the exit character.
 fn exit_label(opt: &Opt) -> String {
     format!("Control-{}", exit_char(opt).to_ascii_uppercase())
 }
 
+// Converts a byte string into a string comprised of each byte
+// in hexadecimal, followed by a more human readable ASCII variant.
 fn hex_str(bytes: &[u8]) -> String {
     let mut hex = String::from("");
     let mut ascii = String::from("");
@@ -122,6 +124,7 @@ fn hex_str(bytes: &[u8]) -> String {
     hex
 }
 
+// Checks to see if a string matches a pattern used for filtering.
 fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
     let result = match pattern.clone() {
         Some(pattern) => {
@@ -130,7 +133,7 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
                 // pattern is fully specified
                 WildMatch::new(&pattern).is_match(&str)
             } else {
-                // Since so wildcard were specified we treat it as if there
+                // Since no wildcard were specified we treat it as if there
                 // was a '*' at each end.
                 WildMatch::new(&format!("*{}*", pattern)).is_match(&str)
             }
@@ -150,6 +153,7 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
     result
 }
 
+// Similar to matches but checks to see if an Option<String> matches a pattern.
 fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool {
     if let Some(str) = str {
         matches(&str, pattern, opt)
@@ -158,6 +162,7 @@ fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool 
     }
 }
 
+// Checks to see if a serial port matches the filtering criteria specified on the command line.
 fn is_usb_serial(port: &SerialPortInfo, opt: &Opt) -> Option<UsbPortInfo> {
     if let SerialPortType::UsbPort(info) = &port.port_type {
         if matches(&port.port_name, opt.port.clone(), opt)
@@ -173,6 +178,7 @@ fn is_usb_serial(port: &SerialPortInfo, opt: &Opt) -> Option<UsbPortInfo> {
     None
 }
 
+// Formats the USB Port information into a human readable form.
 fn extra_usb_info(info: &UsbPortInfo) -> String {
     let mut output = String::new();
     output = output + &format!(" {:04x}:{:04x}", info.vid, info.pid);
@@ -194,6 +200,7 @@ fn extra_usb_info(info: &UsbPortInfo) -> String {
     output
 }
 
+// Lists all of the USB serial ports which match the filtering criteria.
 fn list_ports(opt: &Opt) {
     if let Ok(ports) = serialport::available_ports() {
         let mut port_found = false;
@@ -215,6 +222,7 @@ fn list_ports(opt: &Opt) {
     }
 }
 
+// Returns the first port which matches the filtering criteria.
 fn find_port(opt: &Opt) -> Option<String> {
     if let Ok(ports) = serialport::available_ports() {
         for port in ports {
@@ -226,21 +234,23 @@ fn find_port(opt: &Opt) -> Option<String> {
     None
 }
 
+// Converts key events from crossterm into appropriate character/escape sequences which are then
+// sent over the serial connection.
 fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt) -> Result<()> {
     if opt.debug {
         println!("Event::{:?}\r", key_event);
     }
 
-    // The following escape sequeces cone from the MicroPython codebase.
+    // The following escape sequeces come from the MicroPython codebase.
     //
     //  Up      ESC [A
     //  Down    ESC [B
     //  Right   ESC [C
     //  Left    ESC [D
-    //  Home    ESC [H  or ESC [ 1 ~
-    //  End     ESC [F  or ESC [ 4 ~
-    //  Del     ESC [ 3 ~
-    //  Insert  ESC [ 2 ~
+    //  Home    ESC [H  or ESC [1~
+    //  End     ESC [F  or ESC [4~
+    //  Del     ESC [3~
+    //  Insert  ESC [2~
 
     let mut buf = [0; 4];
 
@@ -284,6 +294,8 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
     Ok(())
 }
 
+// Main function which collects input from the user and sends it over the serial link
+// and collects serial data and presents it to the user.
 async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
     let mut tx_port = port.try_clone()?;
@@ -332,6 +344,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
     Ok(())
 }
 
+// Main entry point to the program.
 #[tokio::main]
 async fn main() -> Result<()> {
     let opt = Opt::from_args();
@@ -366,5 +379,5 @@ async fn main() -> Result<()> {
         return result;
     }
 
-    Err(ProgramError::MustSpecifyPort)
+    Err(ProgramError::NoPortFound)
 }

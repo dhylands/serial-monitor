@@ -1,7 +1,7 @@
 use std::fmt;
 
 pub enum ProgramError {
-    MustSpecifyPort,
+    NoPortFound,
     UnableToOpen(String, std::io::Error),
     IoError(std::io::Error),
     SerialPortError(serialport::Error),
@@ -31,7 +31,9 @@ impl From<serialport::Error> for ProgramError {
 impl fmt::Debug for ProgramError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
-            ProgramError::MustSpecifyPort => write!(f, "Must specify a port to open"),
+            ProgramError::NoPortFound => {
+                write!(f, "No USB serial adapter found which matches criteria.")
+            }
             ProgramError::UnableToOpen(port_name, err) => {
                 write!(f, "Unable to open serial port '{}': {}", port_name, err)
             }
