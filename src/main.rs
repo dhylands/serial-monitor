@@ -23,7 +23,7 @@ mod error;
 use error::{ProgramError, Result};
 
 #[derive(StructOpt, Debug)]
-#[structopt(name = "usb-ser-mon")]
+#[structopt(name = "serial-monitor")]
 struct Opt {
     /// Filter based on name of port
     #[structopt(short, long)]
@@ -38,8 +38,8 @@ struct Opt {
     debug: bool,
 
     /// Turn on local echo
-    #[structopt(short, long)]
-    echo: bool,
+    // #[structopt(short, long)]
+    // echo: bool,
 
     /// List USB Serial devices which are currently connected
     #[structopt(short, long)]

@@ -1,5 +1,5 @@
 [package]
-name = "usb-ser-mon"
+name = "serial-monitor"
 version = "0.0.1"
 authors = ["Dave Hylands <dhylands@gmail.com>"]
 edition = "2018"
