@@ -321,7 +321,9 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                         }
                     }
                     Some(Err(e)) => println!("Error: {:?}\r", e),
-                    None => break,
+                    None => {
+                        println!("maybe_event returned None\r");
+                    },
                 }
             },
             maybe_serial = serial_event => {
@@ -339,7 +341,9 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                         // This most likely means that the serial port has been unplugged.
                         break;
                     },
-                    None => break,
+                    None => {
+                        println!("maybe_serial returned None\r");
+                    },
                 }
             },
         };

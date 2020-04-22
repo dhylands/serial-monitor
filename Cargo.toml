@@ -2,6 +2,14 @@
 name = "serial-monitor"
 version = "0.0.1"
 authors = ["Dave Hylands <dhylands@gmail.com>"]
+license = "MIT"
+keywords = ["serial", "communications", "terminal"]
+categories = ["command-line-utilities"]
+description = "Cross platform command line serial terminal program."
+homepage = "https://github.com/dhylands/serial-monitor"
+documentation = "https://github.com/dhylands/serial-monitor#serial-monitor"
+repository = "https://github.com/dhylands/serial-monitor"
+readme = "README.md"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
