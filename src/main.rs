@@ -334,7 +334,11 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                             std::io::stdout().flush()?;
                         }
                     },
-                    Some(Err(e)) => println!("Serial Error: {:?}\r", e),
+                    Some(Err(e)) => {
+                        println!("Serial Error: {:?}\r", e);
+                        // This most likely means that the serial port has been unplugged.
+                        break;
+                    },
                     None => break,
                 }
             },
