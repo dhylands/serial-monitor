@@ -37,7 +37,7 @@ Usage
 
 ```bash
 $ serial-monitor --help
-serial-monitor 0.0.1
+serial-monitor 0.0.2
 
 USAGE:
     serial-monitor [FLAGS] [OPTIONS]
@@ -45,6 +45,8 @@ USAGE:
 FLAGS:
     -y               Exit using Control-Y rather than Control-X
     -d, --debug      Turn on debugging
+    -f, --find       Like list, but only prints the name of the port that was found. This is useful for using from
+                     scripts or makefiles
     -h, --help       Prints help information
     -l, --list       List USB Serial devices which are currently connected
     -V, --version    Prints version information
@@ -82,6 +84,27 @@ Type "help()" for more information.
 
 To exit from `serial-monitor` use Control-X (or Control-Y if you started with the `-y` option). Using Control-X allows characters like Control-C and Control-D
 to be passed on to the device on the serial port.
+
+Find ports from within a script
+===============================
+
+The `--find` option behaves very similary to the `--list` command, but it only displays the port name of the first port found.
+
+For example, `serial-monitor --list` might show:
+```
+USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/tty.usbmodem7ABA4DC11
+USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/tty.usbmodem7ABA4DC13
+```
+and the command `serial-monitor --find --product 'Black Magic Probe' --port '*1'` would show:
+```
+/dev/tty.usbmodem7ABA4DC11
+```
+
+This can be quite useful from within a script:
+```bash
+GDB_PORT = $(serial-monitor --find --product 'Black Magic Probe' --port '*1')
+arm-none-eabi-gdb -ex 'target extended-remote ${GDB_PORT}' -x gdbinit myprogram.elf
+```
 
 Filtering ports
 ===============

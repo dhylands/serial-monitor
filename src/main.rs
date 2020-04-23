@@ -5,18 +5,11 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures::{future::FutureExt, select, StreamExt};
-use mio_serial::{
-    available_ports,
-    SerialPort, SerialPortInfo,
-};
-use serialport::{
-    SerialPortType, UsbPortInfo,
-};
-use tokio_serial::{
-    DataBits, FlowControl, Parity, StopBits,
-};
+use mio_serial::{available_ports, SerialPort, SerialPortInfo};
+use serialport::{SerialPortType, UsbPortInfo};
 use std::io::Write;
 use structopt::StructOpt;
+use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 use tokio_util::codec::{BytesCodec, Decoder};
 use wildmatch::WildMatch;
 
@@ -38,7 +31,7 @@ struct Opt {
     #[structopt(short, long)]
     debug: bool,
 
-    /// Turn on local echo
+    // Turn on local echo
     // #[structopt(short, long)]
     // echo: bool,
 
@@ -179,7 +172,10 @@ fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool 
         // it needs to match.
         let result = !pattern.is_some();
         if opt.debug {
-            println!("matches_opt(str:{:?}, pattern:{:?}) -> {:?}", str, pattern, result);
+            println!(
+                "matches_opt(str:{:?}, pattern:{:?}) -> {:?}",
+                str, pattern, result
+            );
         }
         result
     }
@@ -394,7 +390,7 @@ async fn main() -> Result<()> {
             println!("{}", port_name);
             return Ok(());
         }
-        return Err(ProgramError::NoPortFound)
+        return Err(ProgramError::NoPortFound);
     }
 
     let mut settings = tokio_serial::SerialPortSettings::default();
