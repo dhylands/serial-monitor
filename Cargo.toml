@@ -18,6 +18,7 @@ edition = "2018"
 crossterm = { version = "0.17", features = ["event-stream"] }
 futures = { version = "0.3" }
 futures-timer = "3.0"
+mio-serial = "3.3.1"
 serialport = "3.3.0"
 structopt = "0.3"
 tokio = { version = "0.2.11", features = ["full"] }

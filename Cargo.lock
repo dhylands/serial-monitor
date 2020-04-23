@@ -554,6 +554,7 @@ dependencies = [
  "crossterm 0.17.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-timer 3.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mio-serial 3.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serialport 3.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "structopt 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.18 (registry+https://github.com/rust-lang/crates.io-index)",

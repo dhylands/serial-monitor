@@ -4,7 +4,7 @@ pub enum ProgramError {
     NoPortFound,
     UnableToOpen(String, std::io::Error),
     IoError(std::io::Error),
-    SerialPortError(serialport::Error),
+    SerialPortError(mio_serial::Error),
     CrossTermError,
 }
 
@@ -22,8 +22,8 @@ impl From<std::io::Error> for ProgramError {
     }
 }
 
-impl From<serialport::Error> for ProgramError {
-    fn from(err: serialport::Error) -> ProgramError {
+impl From<mio_serial::Error> for ProgramError {
+    fn from(err: mio_serial::Error) -> ProgramError {
         ProgramError::SerialPortError(err)
     }
 }

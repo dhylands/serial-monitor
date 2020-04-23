@@ -5,9 +5,15 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures::{future::FutureExt, select, StreamExt};
+use mio_serial::{
+    available_ports,
+    SerialPort, SerialPortInfo,
+};
 use serialport::{
-    DataBits, FlowControl, Parity, SerialPort, SerialPortInfo, SerialPortType, StopBits,
-    UsbPortInfo,
+    SerialPortType, UsbPortInfo,
+};
+use tokio_serial::{
+    DataBits, FlowControl, Parity, StopBits,
 };
 use std::io::Write;
 use structopt::StructOpt;
@@ -116,9 +122,14 @@ fn hex_str(bytes: &[u8]) -> String {
                 let ctrl = b"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_";
                 ascii.push(ctrl[*byte as usize] as char);
             }
+        } else if *byte > b'~' {
+            ascii.push('.');
+        } else {
+            ascii.push(*byte as char);
         }
     }
 
+    hex.push(':');
     hex.push(' ');
     hex.push_str(&ascii);
     hex
@@ -158,7 +169,14 @@ fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool 
     if let Some(str) = str {
         matches(&str, pattern, opt)
     } else {
-        false
+        // If no pattern was specified, then we don't care if there was a string
+        // supplied or not. But if we're looking for a particular patterm, then
+        // it needs to match.
+        let result = !pattern.is_some();
+        if opt.debug {
+            println!("matches_opt(str:{:?}, pattern:{:?}) -> {:?}", str, pattern, result);
+        }
+        result
     }
 }
 
@@ -202,7 +220,7 @@ fn extra_usb_info(info: &UsbPortInfo) -> String {
 
 // Lists all of the USB serial ports which match the filtering criteria.
 fn list_ports(opt: &Opt) {
-    if let Ok(ports) = serialport::available_ports() {
+    if let Ok(ports) = available_ports() {
         let mut port_found = false;
         for p in ports {
             if let Some(info) = is_usb_serial(&p, &opt) {
@@ -224,7 +242,7 @@ fn list_ports(opt: &Opt) {
 
 // Returns the first port which matches the filtering criteria.
 fn find_port(opt: &Opt) -> Option<String> {
-    if let Ok(ports) = serialport::available_ports() {
+    if let Ok(ports) = available_ports() {
         for port in ports {
             if let Some(_info) = is_usb_serial(&port, &opt) {
                 return Some(port.port_name);
@@ -286,9 +304,9 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
     };
     if let Some(key_str) = key_str {
         if opt.debug {
-            println!("{}\r", hex_str(key_str));
+            println!("Send: {}\r", hex_str(key_str));
         }
-        tx_port.write_all(key_str)?;
+        tx_port.write(key_str)?;
     }
 
     Ok(())
@@ -320,7 +338,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                             println!("Unrecognized Event::{:?}\r", event);
                         }
                     }
-                    Some(Err(e)) => println!("Error: {:?}\r", e),
+                    Some(Err(e)) => println!("crossterm Error: {:?}\r", e),
                     None => {
                         println!("maybe_event returned None\r");
                     },
