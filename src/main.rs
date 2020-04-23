@@ -46,6 +46,11 @@ struct Opt {
     #[structopt(short, long)]
     list: bool,
 
+    /// Like list, but only prints the name of the port that was found.
+    /// This is useful for using from scripts or makefiles.
+    #[structopt(short, long)]
+    find: bool,
+
     /// Turn on verbose messages
     #[structopt(short, long)]
     verbose: bool,
@@ -382,6 +387,14 @@ async fn main() -> Result<()> {
     if opt.list {
         list_ports(&opt);
         return Ok(());
+    }
+
+    if opt.find {
+        if let Some(port_name) = find_port(&opt) {
+            println!("{}", port_name);
+            return Ok(());
+        }
+        return Err(ProgramError::NoPortFound)
     }
 
     let mut settings = tokio_serial::SerialPortSettings::default();
