@@ -6,6 +6,10 @@ A serial monitor for USB Serial devices, written in rust.
 `serial-monitor` is a command line program which will conect to, and allow you to interact with devices
 which are connected to your host computer via USB serial adapters.
 
+`serial-monitor` has been tested on Mac OSX, and Linux. Currently there is an
+[issue](https://github.com/berkowski/mio-serial/issues/22)
+in mio-serial which prevents this from running properly on Windows.
+
 You can use the `--list` option to display all of the detected USB serial
 adapters, and you can use the `--vid`, `--pid`, `--port`, `--serial`, 
 `--manufacturer`, or `--product` options to filter your list.
@@ -65,8 +69,8 @@ OPTIONS:
 The `--list` (or `-l`) option will list all of the connected USB Serial Adapters, for example:
 ```
 $ serial-monitor --list
-USB Serial Device f055:9800 with manufacturer 'MicroPython' serial '336F338F3433' product 'Pyboard Virtual Comm Port in FS Mode' found @/dev/tty.usbmodem336F338F34332
-USB Serial Device 0403:6001 with manufacturer 'FTDI' serial 'A700e6Lr' product 'FT232R USB UART' found @/dev/tty.usbserial-A700e6Lr
+USB Serial Device f055:9800 with manufacturer 'MicroPython' serial '336F338F3433' product 'Pyboard Virtual Comm Port in FS Mode' found @/dev/cu.usbmodem336F338F34332
+USB Serial Device 0403:6001 with manufacturer 'FTDI' serial 'A700e6Lr' product 'FT232R USB UART' found @/dev/cu.usbserial-A700e6Lr
 ```
 
 If you then wanted to connect to the MicroPython board, you might do: `serial-monitor -m Micro` or perhaps `serial-monitor --vid f055`.
@@ -75,7 +79,7 @@ match the filter criteria.
 
 Once you're connected you should see something like the following:
 ```
-Connected to /dev/tty.usbmodem336F338F34332
+Connected to /dev/cu.usbmodem336F338F34332
 Press Control-X to exit
 MicroPython v1.11-47-g1a51fc9dd on 2019-06-18; PYBv1.1 with STM32F405RG
 Type "help()" for more information.
@@ -92,12 +96,12 @@ The `--find` option behaves very similary to the `--list` command, but it only d
 
 For example, `serial-monitor --list` might show:
 ```
-USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/tty.usbmodem7ABA4DC11
-USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/tty.usbmodem7ABA4DC13
+USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/cu.usbmodem7ABA4DC11
+USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/cu.usbmodem7ABA4DC13
 ```
 and the command `serial-monitor --find --product 'Black Magic Probe' --port '*1'` would show:
 ```
-/dev/tty.usbmodem7ABA4DC11
+/dev/cu.usbmodem7ABA4DC11
 ```
 
 This can be quite useful from within a script:
