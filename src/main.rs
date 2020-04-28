@@ -5,7 +5,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures::{future::FutureExt, select, StreamExt};
-use mio_serial::{available_ports, SerialPort, SerialPortInfo};
+use mio_serial::{SerialPort, SerialPortInfo};
 use serialport::{SerialPortType, UsbPortInfo};
 use std::io::Write;
 use structopt::StructOpt;
@@ -34,7 +34,6 @@ struct Opt {
     // Turn on local echo
     // #[structopt(short, long)]
     // echo: bool,
-
     /// List USB Serial devices which are currently connected
     #[structopt(short, long)]
     list: bool,
@@ -170,7 +169,7 @@ fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool 
         // If no pattern was specified, then we don't care if there was a string
         // supplied or not. But if we're looking for a particular patterm, then
         // it needs to match.
-        let result = !pattern.is_some();
+        let result = pattern.is_none();
         if opt.debug {
             println!(
                 "matches_opt(str:{:?}, pattern:{:?}) -> {:?}",
@@ -179,6 +178,39 @@ fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool 
         }
         result
     }
+}
+
+#[cfg(target_os = "macos")]
+fn map_port_name(port_name: &str) -> String {
+    // available_ports returns /dev/tty.* rather than /dev/cu.*
+    // /dev/tty.* are designed for incoming serial connections and will block
+    // until DCD is set.
+    // /dev/cu.* are designed for outgoing serial connections and don't block,
+    // so we change /dev/tty.* to /dev/cu.* since this program is primarily
+    // used for outgoing connections.
+    if port_name.starts_with("/dev/tty.") {
+        port_name.replace("/dev/tty.", "/dev/cu.")
+    } else {
+        String::from(port_name)
+    }
+}
+
+// Returns a list of the available ports (for macos)
+#[cfg(target_os = "macos")]
+fn available_ports() -> Result<Vec<SerialPortInfo>> {
+    Ok(mio_serial::available_ports()?
+        .into_iter()
+        .map(|mut port| {
+            port.port_name = map_port_name(&port.port_name);
+            port
+        })
+        .collect())
+}
+
+// Returns a list of the available ports (for everything but macos)
+#[cfg(not(target_os = "macos"))]
+fn available_ports() -> Result<Vec<SerialPortInfo>> {
+    Ok(mio_serial::available_ports()?)
 }
 
 // Checks to see if a serial port matches the filtering criteria specified on the command line.
@@ -307,7 +339,7 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
         if opt.debug {
             println!("Send: {}\r", hex_str(key_str));
         }
-        tx_port.write(key_str)?;
+        tx_port.write_all(key_str)?;
     }
 
     Ok(())
