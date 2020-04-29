@@ -70,6 +70,10 @@ struct Opt {
     /// Filter based on product name
     #[structopt(long)]
     product: Option<String>,
+
+    /// Return the index'th result
+    #[structopt(long)]
+    index: Option<usize>,
 }
 
 // Returns the lowercase version of the character which will cause
@@ -214,7 +218,7 @@ fn available_ports() -> Result<Vec<SerialPortInfo>> {
 }
 
 // Checks to see if a serial port matches the filtering criteria specified on the command line.
-fn is_usb_serial(port: &SerialPortInfo, opt: &Opt) -> Option<UsbPortInfo> {
+fn usb_port_matches(port: &SerialPortInfo, opt: &Opt) -> bool {
     if let SerialPortType::UsbPort(info) = &port.port_type {
         if matches(&port.port_name, opt.port.clone(), opt)
             && matches(&format!("{:04x}", info.vid), opt.vid.clone(), opt)
@@ -223,10 +227,33 @@ fn is_usb_serial(port: &SerialPortInfo, opt: &Opt) -> Option<UsbPortInfo> {
             && matches_opt(info.serial_number.clone(), opt.serial.clone(), opt)
             && matches_opt(info.product.clone(), opt.product.clone(), opt)
         {
-            return Some(info.clone());
+            return true;
         }
     }
-    None
+    false
+}
+
+fn filtered_ports(opt: &Opt) -> Result<Vec<SerialPortInfo>> {
+    let mut ports: Vec<SerialPortInfo> = available_ports()?
+        .into_iter()
+        .filter(|info| usb_port_matches(&info, opt))
+        .collect();
+    ports.sort_by(|a, b| a.port_name.cmp(&b.port_name));
+    if let Some(index) = opt.index {
+        if index < ports.len() {
+            Ok(vec![ports[index].clone()])
+        } else {
+            Err(ProgramError::NoPortFound)
+        }
+    } else if ports.is_empty() {
+        Err(ProgramError::NoPortFound)
+    } else {
+        Ok(ports)
+    }
+}
+
+fn filtered_port(opt: &Opt) -> Result<SerialPortInfo> {
+    Ok(filtered_ports(opt)?[0].clone())
 }
 
 // Formats the USB Port information into a human readable form.
@@ -252,37 +279,24 @@ fn extra_usb_info(info: &UsbPortInfo) -> String {
 }
 
 // Lists all of the USB serial ports which match the filtering criteria.
-fn list_ports(opt: &Opt) {
-    if let Ok(ports) = available_ports() {
-        let mut port_found = false;
-        for p in ports {
-            if let Some(info) = is_usb_serial(&p, &opt) {
-                port_found = true;
-                println!(
-                    "USB Serial Device{} found @{}",
-                    extra_usb_info(&info),
-                    p.port_name
-                );
-            }
+fn list_ports(opt: &Opt) -> Result<()> {
+    for port in filtered_ports(opt)? {
+        if let SerialPortType::UsbPort(info) = &port.port_type {
+            println!(
+                "USB Serial Device{} found @{}",
+                extra_usb_info(&info),
+                port.port_name
+            );
+        } else {
+            println!("Serial Device found @{}", port.port_name);
         }
-        if !port_found {
-            println!("No USB serial ports found");
-        }
-    } else {
-        println!("Error listing serial ports");
     }
+    Ok(())
 }
 
 // Returns the first port which matches the filtering criteria.
-fn find_port(opt: &Opt) -> Option<String> {
-    if let Ok(ports) = available_ports() {
-        for port in ports {
-            if let Some(_info) = is_usb_serial(&port, &opt) {
-                return Some(port.port_name);
-            }
-        }
-    }
-    None
+fn find_port(opt: &Opt) -> Result<String> {
+    Ok(filtered_port(opt)?.port_name)
 }
 
 // Converts key events from crossterm into appropriate character/escape sequences which are then
@@ -406,6 +420,21 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
 // Main entry point to the program.
 #[tokio::main]
 async fn main() -> Result<()> {
+    let result = real_main().await;
+    match result {
+        Ok(()) => std::process::exit(0),
+        Err(ProgramError::NoPortFound) => {
+            writeln!(&mut std::io::stderr(), "No USB serial ports found")?;
+            std::process::exit(1);
+        }
+        Err(err) => {
+            writeln!(&mut std::io::stderr(), "Error: {:?}", err)?;
+            std::process::exit(2);
+        }
+    }
+}
+
+async fn real_main() -> Result<()> {
     let opt = Opt::from_args();
 
     if opt.verbose {
@@ -413,18 +442,16 @@ async fn main() -> Result<()> {
     }
 
     if opt.list {
-        list_ports(&opt);
+        list_ports(&opt)?;
         return Ok(());
     }
 
     if opt.find {
-        if let Some(port_name) = find_port(&opt) {
-            println!("{}", port_name);
-            return Ok(());
-        }
-        return Err(ProgramError::NoPortFound);
+        println!("{}", find_port(&opt)?);
+        return Ok(());
     }
 
+    // Do the serial port monitoring
     let mut settings = tokio_serial::SerialPortSettings::default();
     settings.baud_rate = opt.baud;
     settings.data_bits = DataBits::Eight;
@@ -432,19 +459,16 @@ async fn main() -> Result<()> {
     settings.stop_bits = StopBits::One;
     settings.flow_control = FlowControl::None;
 
-    if let Some(port_name) = find_port(&opt) {
-        let err_port_name = port_name.clone();
-        let mut port = tokio_serial::Serial::from_path(port_name.clone(), &settings)
-            .map_err(|e| ProgramError::UnableToOpen(err_port_name, e))?;
+    let port_name = find_port(&opt)?;
+    let err_port_name = port_name.clone();
+    let mut port = tokio_serial::Serial::from_path(port_name.clone(), &settings)
+        .map_err(|e| ProgramError::UnableToOpen(err_port_name, e))?;
 
-        println!("Connected to {}", port_name);
-        println!("Press {} to exit", exit_label(&opt));
-        enable_raw_mode()?;
-        let result = monitor(&mut port, &opt).await;
-        disable_raw_mode()?;
-        println!();
-        return result;
-    }
-
-    Err(ProgramError::NoPortFound)
+    println!("Connected to {}", port_name);
+    println!("Press {} to exit", exit_label(&opt));
+    enable_raw_mode()?;
+    let result = monitor(&mut port, &opt).await;
+    disable_raw_mode()?;
+    println!();
+    result
 }

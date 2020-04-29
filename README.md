@@ -23,25 +23,33 @@ to exit from `serial-monitor` and return you to your prompt.
 Installation
 ============
 
-Clone this repository:
+Install rust. The recommended way is to use [rustup](https://rustup.rs/).
+
+Once rust is installed you can install directly from crates.io by using:
+```
+cargo install serial-monitor
+```
+This installs serial-monitor into `~/.cargo/bin`
+
+If you want to build and install from source locally, then clone the
+[repository](https://github.com/dhylands/serial-monitor.git):
 ```
 git clone https://github.com/dhylands/serial-monitor.git
 cd serial-monitor
 ```
 
-Install rust. Personally, I prefer to use [rustup](https://rustup.rs/). I happned to be using 1.42.0.
 You can then build and install `serial-monitor` using:
 ```
 cargo install --path .
 ```
-This will copy `serial-monitor` into `~/.cargo/bin`
+This will build `serial-monitor` and install it into `~/.cargo/bin`
 
 Usage
 =====
 
 ```bash
 $ serial-monitor --help
-serial-monitor 0.0.2
+serial-monitor 0.0.4
 
 USAGE:
     serial-monitor [FLAGS] [OPTIONS]
@@ -58,6 +66,7 @@ FLAGS:
 
 OPTIONS:
     -b, --baud <baud>                    Baud rate to use [default: 115200]
+        --index <index>                  Return the index'th result
     -m, --manufacturer <manufacturer>    Filter based on Manufacturer name
         --pid <pid>                      Filter based on Product ID (PID)
     -p, --port <port>                    Filter based on name of port
@@ -73,7 +82,10 @@ USB Serial Device f055:9800 with manufacturer 'MicroPython' serial '336F338F3433
 USB Serial Device 0403:6001 with manufacturer 'FTDI' serial 'A700e6Lr' product 'FT232R USB UART' found @/dev/cu.usbserial-A700e6Lr
 ```
 
-If you then wanted to connect to the MicroPython board, you might do: `serial-monitor -m Micro` or perhaps `serial-monitor --vid f055`.
+Monitoring the serial port
+==========================
+
+To connect to the MicroPython board (assuming the list shown above), you might do: `serial-monitor -m Micro` or perhaps `serial-monitor --vid f055`.
 You can experiment with filtering options by combining with the `--list` option which will only show you the USB Serial Adapters which
 match the filter criteria.
 
@@ -89,7 +101,18 @@ Type "help()" for more information.
 To exit from `serial-monitor` use Control-X (or Control-Y if you started with the `-y` option). Using Control-X allows characters like Control-C and Control-D
 to be passed on to the device on the serial port.
 
-Find ports from within a script
+Filtering ports
+===============
+
+You can use the `--vid`, `--pid`, `--port`, `--serial`, `--manufacturer`, or `--product` options to filter the selection of the serial ports.
+All of these options allow the use of `*` or `?` wildcards. Note that you'll probably need to quote these to prevent your shell from expanding them.
+`*` means to match 0 or more characters and `?` means to match one character. If you don't specify any wildcards then it is assumed that there is a `*`
+at the beginning and the end of the string. So `--product FS` will behave as if you had typed `--product '*FS*'`.
+
+The `--index` option can be used to return the index'th result. This is useful for devices like the Black Magic Probe which return multiple
+serial ports which all have identical attributes.
+
+Finding ports from within a script
 ===============================
 
 The `--find` option behaves very similary to the `--list` command, but it only displays the port name of the first port found.
@@ -99,21 +122,13 @@ For example, `serial-monitor --list` might show:
 USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/cu.usbmodem7ABA4DC11
 USB Serial Device 1d50:6018 with manufacturer 'Black Sphere Technologies' serial '7ABA4DC1' product 'Black Magic Probe' found @/dev/cu.usbmodem7ABA4DC13
 ```
-and the command `serial-monitor --find --product 'Black Magic Probe' --port '*1'` would show:
+and the command `serial-monitor --find --product 'Black Magic Probe' --index 0` would show:
 ```
 /dev/cu.usbmodem7ABA4DC11
 ```
 
 This can be quite useful from within a script:
 ```bash
-GDB_PORT = $(serial-monitor --find --product 'Black Magic Probe' --port '*1')
+GDB_PORT = $(serial-monitor --find --product 'Black Magic Probe' --index 0)
 arm-none-eabi-gdb -ex 'target extended-remote ${GDB_PORT}' -x gdbinit myprogram.elf
 ```
-
-Filtering ports
-===============
-
-You can use the `--vid`, `--pid`, `--port`, `--serial`, `--manufacturer`, or `--product` options to filter the selection of the serial ports.
-All of these options allow the use of `*` or `?` wildcards. Note that you'll probably need to quote these to prevent your shell from expanding them.
-`*` means to match 0 or more characters and `?` means to match one character. If you don't specify any wildcards then it is assumed that there is a `*`
-at the beginning and the end of the string. So `--product FS` will behave as if you had typed `--product '*FS*'`.
