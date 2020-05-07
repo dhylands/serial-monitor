@@ -143,4 +143,8 @@ crossterm wasn't reporting any events when these keys were pressed. If you go in
 Terminal->Preferences, select your Profile and then the Keyboard tab, you can change
 Home from `ESC O H` to be `ESC [ H` and End from `ESC O F` to be `ESC [ F` then the
 Home and End keys are reported properly via crossterm. Here's a picture of what the
-Home and End keys look like in the Keyboard tab: ![Home/End](https://github.com/dhylands/serial-monitor/raw/master/MacOS-Home-End.png)
+Home and End keys look like in the Keyboard tab:
+
+![Home/End](https://github.com/dhylands/serial-monitor/raw/master/MacOS-Home-End.png)
+
+This has the nice side-effect of making the Home/End keys work properly in bash in the Mac's Terminal window as well.
