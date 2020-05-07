@@ -132,3 +132,15 @@ This can be quite useful from within a script:
 GDB_PORT = $(serial-monitor --find --product 'Black Magic Probe' --index 0)
 arm-none-eabi-gdb -ex 'target extended-remote ${GDB_PORT}' -x gdbinit myprogram.elf
 ```
+
+Supporting Home/End keys on Mac OS
+==================================
+
+On the regular Mac keyboard Fn-Left generates `ESC [ H` (which corresponds to Home) and
+Fn-Right generates `ESC [ F` (which corresponds to End). For some reason, pressing the
+Home and End keys on an external keyboard are mapped to `ESC O H` and `ESC O F` and
+crossterm wasn't reporting any events when these keys were pressed. If you go into
+Terminal->Preferences, select your Profile and then the Keyboard tab, you can change
+Home from `ESC O H` to be `ESC [ H` and End from `ESC O F` to be `ESC [ F` then the
+Home and End keys are reported properly via crossterm. Here's a picture of what the
+Home and End keys look like in the Keyboard tab: ![Home/End](https://github.com/dhylands/serial-monitor/raw/master/MacOS-Home-End.png)

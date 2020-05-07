@@ -324,6 +324,8 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
         KeyCode::Enter => Some(b"\x0D"),
         KeyCode::Left => Some(b"\x1b[D"),
         KeyCode::Right => Some(b"\x1b[C"),
+        KeyCode::Home => Some(b"\x1b[H"),
+        KeyCode::End => Some(b"\x1b[F"),
         KeyCode::Up => Some(b"\x1b[A"),
         KeyCode::Down => Some(b"\x1b[B"),
         KeyCode::Tab => Some(b"\x09"),
