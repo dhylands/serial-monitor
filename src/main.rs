@@ -323,7 +323,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
 
     let key_str: Option<&[u8]> = match key_event.code {
         KeyCode::Backspace => Some(b"\x08"),
-        KeyCode::Enter => Some(b"\x0D"),
+        KeyCode::Enter => Some(b"\n"),
         KeyCode::Left => Some(b"\x1b[D"),
         KeyCode::Right => Some(b"\x1b[C"),
         KeyCode::Home => Some(b"\x1b[H"),
@@ -345,7 +345,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
                     buf[0] = (buf[0] + 8) & 0x1f;
                     Some(&buf[0..1])
                 } else {
-                    None
+                    Some(ch.encode_utf8(&mut buf).as_bytes())
                 }
             } else {
                 Some(ch.encode_utf8(&mut buf).as_bytes())
