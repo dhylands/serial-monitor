@@ -49,7 +49,7 @@ Usage
 
 ```bash
 $ serial-monitor --help
-serial-monitor 0.0.4
+serial-monitor 0.0.5
 
 USAGE:
     serial-monitor [FLAGS] [OPTIONS]
@@ -57,6 +57,7 @@ USAGE:
 FLAGS:
     -y               Exit using Control-Y rather than Control-X
     -d, --debug      Turn on debugging
+    -e, --echo
     -f, --find       Like list, but only prints the name of the port that was found. This is useful for using from
                      scripts or makefiles
     -h, --help       Prints help information
