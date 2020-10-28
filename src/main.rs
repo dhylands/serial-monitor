@@ -15,7 +15,9 @@ use tokio_util::codec::BytesCodec;
 use wildmatch::WildMatch;
 
 mod error;
+mod string_decoder;
 use error::{ProgramError, Result};
+use string_decoder::StringDecoder;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "serial-monitor")]
@@ -375,7 +377,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
     let (rx_port, tx_port) = tokio::io::split(port);
 
-    let mut serial_reader = tokio_util::codec::FramedRead::new(rx_port, BytesCodec::new());
+    let mut serial_reader = tokio_util::codec::FramedRead::new(rx_port, StringDecoder::new());
     let serial_sink = tokio_util::codec::FramedWrite::new(tx_port, BytesCodec::new());
     let (serial_writer, serial_consumer) = futures::channel::mpsc::unbounded::<Bytes>();
 
@@ -414,7 +416,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                         if opt.debug {
                             println!("Serial Event:{:?}\r", serial_event);
                         } else {
-                            print!("{}", String::from_utf8_lossy(&serial_event));
+                            print!("{}", serial_event);
                             std::io::stdout().flush()?;
                         }
                     },
