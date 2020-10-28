@@ -33,8 +33,9 @@ struct Opt {
     debug: bool,
 
     // Turn on local echo
-    // #[structopt(short, long)]
-    // echo: bool,
+    #[structopt(short, long)]
+    echo: bool,
+
     /// List USB Serial devices which are currently connected
     #[structopt(short, long)]
     list: bool,
@@ -355,6 +356,12 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
     if let Some(key_str) = key_str {
         if opt.debug {
             println!("Send: {}\r", hex_str(key_str));
+        }
+        if opt.echo {
+            if let Ok(val) = std::str::from_utf8(key_str) {
+                print!("{}", val);
+                std::io::stdout().flush()?;
+            }
         }
         Ok(Some(Bytes::copy_from_slice(key_str)))
     } else {
