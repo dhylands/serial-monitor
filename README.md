@@ -47,7 +47,7 @@ This will build `serial-monitor` and install it into `~/.cargo/bin`
 Usage
 =====
 
-```bash
+```
 $ serial-monitor --help
 serial-monitor 0.0.5
 
@@ -67,12 +67,16 @@ FLAGS:
 
 OPTIONS:
     -b, --baud <baud>                    Baud rate to use [default: 115200]
+        --databits <databits>            Data bits (5, 6, 7, 8) [default: 8]
+        --flow <flow-control>            Flow control (none, software, hardware) [default: none]
         --index <index>                  Return the index'th result
     -m, --manufacturer <manufacturer>    Filter based on Manufacturer name
+        --parity <parity>                Parity checking (none, odd, even) [default: none]
         --pid <pid>                      Filter based on Product ID (PID)
     -p, --port <port>                    Filter based on name of port
         --product <product>              Filter based on product name
     -s, --serial <serial>                Filter based on serial number
+        --stopbits <stopbits>            Stop bits (1, 2) [default: 1]
         --vid <vid>                      Filter based on Vendor ID (VID)
 ```
 

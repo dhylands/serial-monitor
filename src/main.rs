@@ -8,7 +8,10 @@ use crossterm::{
 use futures::{future::FutureExt, select, StreamExt};
 use mio_serial::SerialPortInfo;
 use serialport::{SerialPortType, UsbPortInfo};
+use std::convert::TryFrom;
+use std::io;
 use std::io::Write;
+use std::result::Result as StdResult;
 use structopt::StructOpt;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 use tokio_util::codec::BytesCodec;
@@ -78,6 +81,101 @@ struct Opt {
     /// Return the index'th result
     #[structopt(long)]
     index: Option<usize>,
+
+    /// Parity checking (none, odd, even)
+    #[structopt(long, default_value = "none")]
+    parity: ParityOpt,
+
+    /// Stop bits (1, 2)
+    #[structopt(long, default_value = "1")]
+    stopbits: usize,
+
+    /// Flow control (none, software, hardware)
+    #[structopt(long, default_value = "none")]
+    flow: FlowControlOpt,
+
+    /// Data bits (5, 6, 7, 8)
+    #[structopt(long, default_value = "8")]
+    databits: usize,
+}
+
+struct DataBitsOpt(DataBits);
+
+impl TryFrom<usize> for DataBitsOpt {
+    type Error = io::Error;
+
+    fn try_from(value: usize) -> StdResult<Self, io::Error> {
+        match value {
+            5 => Ok(Self(DataBits::Five)),
+            6 => Ok(Self(DataBits::Six)),
+            7 => Ok(Self(DataBits::Seven)),
+            8 => Ok(Self(DataBits::Eight)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "databits out of range",
+            )),
+        }
+    }
+}
+
+/// Flow control modes
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "snake_case")]
+enum FlowControlOpt {
+    /// No flow control.
+    None,
+    /// Flow control using XON/XOFF bytes.
+    Software,
+    /// Flow control using RTS/CTS signals.
+    Hardware,
+}
+
+impl From<FlowControlOpt> for FlowControl {
+    fn from(opt: FlowControlOpt) -> Self {
+        match opt {
+            FlowControlOpt::None => FlowControl::None,
+            FlowControlOpt::Software => FlowControl::Software,
+            FlowControlOpt::Hardware => FlowControl::Hardware,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "snake_case")]
+enum ParityOpt {
+    /// No parity bit.
+    None,
+    /// Parity bit sets odd number of 1 bits.
+    Odd,
+    /// Parity bit sets even number of 1 bits.
+    Even,
+}
+
+impl From<ParityOpt> for Parity {
+    fn from(opt: ParityOpt) -> Self {
+        match opt {
+            ParityOpt::None => Parity::None,
+            ParityOpt::Odd => Parity::Odd,
+            ParityOpt::Even => Parity::Even,
+        }
+    }
+}
+
+struct StopBitsOpt(StopBits);
+
+impl TryFrom<usize> for StopBitsOpt {
+    type Error = io::Error;
+
+    fn try_from(value: usize) -> StdResult<Self, io::Error> {
+        match value {
+            1 => Ok(Self(StopBits::One)),
+            2 => Ok(Self(StopBits::Two)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "stopbits out of range",
+            )),
+        }
+    }
 }
 
 // Returns the lowercase version of the character which will cause
@@ -473,10 +571,10 @@ async fn real_main() -> Result<()> {
     // Do the serial port monitoring
     let mut settings = tokio_serial::SerialPortSettings::default();
     settings.baud_rate = opt.baud;
-    settings.data_bits = DataBits::Eight;
-    settings.parity = Parity::None;
-    settings.stop_bits = StopBits::One;
-    settings.flow_control = FlowControl::None;
+    settings.data_bits = DataBitsOpt::try_from(opt.databits)?.0;
+    settings.parity = Parity::from(opt.parity);
+    settings.stop_bits = StopBitsOpt::try_from(opt.stopbits)?.0;
+    settings.flow_control = FlowControl::from(opt.flow);
 
     let port_name = find_port(&opt)?;
     let err_port_name = port_name.clone();

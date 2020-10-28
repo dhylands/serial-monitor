@@ -26,3 +26,4 @@ tokio-util = { version = "0.3.1", features = ["codec"] }
 tokio-serial = "4.3.3"
 wildmatch = "1.0.9"
 bytes = "0.5.4"
+strum = { version = "0.19.5", features = ["derive"] }
