@@ -1,16 +1,17 @@
 #![recursion_limit = "256"] // Needed for select!
 
+use bytes::Bytes;
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures::{future::FutureExt, select, StreamExt};
-use mio_serial::{SerialPort, SerialPortInfo};
+use mio_serial::SerialPortInfo;
 use serialport::{SerialPortType, UsbPortInfo};
 use std::io::Write;
 use structopt::StructOpt;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-use tokio_util::codec::{BytesCodec, Decoder};
+use tokio_util::codec::BytesCodec;
 use wildmatch::WildMatch;
 
 mod error;
@@ -301,7 +302,7 @@ fn find_port(opt: &Opt) -> Result<String> {
 
 // Converts key events from crossterm into appropriate character/escape sequences which are then
 // sent over the serial connection.
-fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt) -> Result<()> {
+fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
     if opt.debug {
         println!("Event::{:?}\r", key_event);
     }
@@ -355,26 +356,31 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
         if opt.debug {
             println!("Send: {}\r", hex_str(key_str));
         }
-        tx_port.write_all(key_str)?;
+        Ok(Some(Bytes::copy_from_slice(key_str)))
+    } else {
+        Ok(None)
     }
-
-    Ok(())
 }
 
 // Main function which collects input from the user and sends it over the serial link
 // and collects serial data and presents it to the user.
 async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
-    let mut tx_port = port.try_clone()?;
-    let mut serial_reader = BytesCodec::new().framed(port);
+    let (rx_port, tx_port) = tokio::io::split(port);
+
+    let mut serial_reader = tokio_util::codec::FramedRead::new(rx_port, BytesCodec::new());
+    let serial_sink = tokio_util::codec::FramedWrite::new(tx_port, BytesCodec::new());
+    let (serial_writer, serial_consumer) = futures::channel::mpsc::unbounded::<Bytes>();
 
     let exit_code = exit_code(opt);
 
+    let mut poll_send = serial_consumer.map(Ok).forward(serial_sink);
     loop {
         let mut event = reader.next().fuse();
         let mut serial_event = serial_reader.next().fuse();
 
         select! {
+            _ = poll_send => {}
             maybe_event = event => {
                 match maybe_event {
                     Some(Ok(event)) => {
@@ -382,7 +388,9 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                             break;
                         }
                         if let Event::Key(key_event) = event {
-                            handle_key_event(key_event, tx_port.as_mut(), opt)?;
+                            if let Some(key) = handle_key_event(key_event, opt)? {
+                                serial_writer.unbounded_send(key).unwrap();
+                            }
                         } else {
                             println!("Unrecognized Event::{:?}\r", event);
                         }
