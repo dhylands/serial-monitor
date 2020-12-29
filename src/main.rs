@@ -45,6 +45,10 @@ struct Opt {
     #[structopt(short, long)]
     list: bool,
 
+    /// End of line character to use (cr, lf, crlf)
+    #[structopt(long, default_value = "crlf")]
+    eol: Eol,
+
     /// Like list, but only prints the name of the port that was found.
     /// This is useful for using from scripts or makefiles.
     #[structopt(short, long)]
@@ -174,6 +178,28 @@ impl TryFrom<usize> for StopBitsOpt {
                 io::ErrorKind::Other,
                 "stopbits out of range",
             )),
+        }
+    }
+}
+
+/// End of line character options
+#[derive(Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "snake_case")]
+enum Eol {
+    /// Carriage return
+    Cr,
+    /// Carriage return, line feed
+    Crlf,
+    /// Line feed
+    Lf,
+}
+
+impl Eol {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Cr => &b"\r"[..],
+            Self::Crlf => &b"\r\n"[..],
+            Self::Lf => &b"\n"[..],
         }
     }
 }
@@ -423,7 +449,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
 
     let key_str: Option<&[u8]> = match key_event.code {
         KeyCode::Backspace => Some(b"\x08"),
-        KeyCode::Enter => Some(b"\n"),
+        KeyCode::Enter => Some(opt.eol.bytes()),
         KeyCode::Left => Some(b"\x1b[D"),
         KeyCode::Right => Some(b"\x1b[C"),
         KeyCode::Home => Some(b"\x1b[H"),
