@@ -29,7 +29,7 @@ struct Opt {
     #[structopt(short, long)]
     port: Option<String>,
 
-    /// Baud rate to use.
+    /// Baud rate to use
     #[structopt(short, long, default_value = "115200")]
     baud: u32,
 
@@ -41,13 +41,13 @@ struct Opt {
     #[structopt(short, long)]
     echo: bool,
 
-    /// List USB Serial devices which are currently connected
+    /// List USB serial devices which are currently connected
     #[structopt(short, long)]
     list: bool,
 
-    /// End of line character to use (cr, lf, crlf)
-    #[structopt(long, default_value = "crlf")]
-    eol: Eol,
+    /// Enter character to send (cr, lf, crlf)
+    #[structopt(long, default_value = "cr")]
+    enter: Eol,
 
     /// Like list, but only prints the name of the port that was found.
     /// This is useful for using from scripts or makefiles.
@@ -70,7 +70,7 @@ struct Opt {
     #[structopt(long)]
     pid: Option<String>,
 
-    /// Filter based on Manufacturer name
+    /// Filter based on manufacturer name
     #[structopt(short, long)]
     manufacturer: Option<String>,
 
@@ -449,7 +449,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
 
     let key_str: Option<&[u8]> = match key_event.code {
         KeyCode::Backspace => Some(b"\x08"),
-        KeyCode::Enter => Some(opt.eol.bytes()),
+        KeyCode::Enter => Some(opt.enter.bytes()),
         KeyCode::Left => Some(b"\x1b[D"),
         KeyCode::Right => Some(b"\x1b[C"),
         KeyCode::Home => Some(b"\x1b[H"),

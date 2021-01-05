@@ -55,20 +55,20 @@ FLAGS:
     -y               Exit using Control-Y rather than Control-X
     -d, --debug      Turn on debugging
     -e, --echo
-    -f, --find       Like list, but only prints the name of the port that was found. This is useful 
-                     for using from scripts or makefiles
+    -f, --find       Like list, but only prints the name of the port that was found. This is 
+                     useful for using from scripts or makefiles
     -h, --help       Prints help information
-    -l, --list       List USB Serial devices which are currently connected
+    -l, --list       List USB serial devices which are currently connected
     -V, --version    Prints version information
     -v, --verbose    Turn on verbose messages
 
 OPTIONS:
     -b, --baud <baud>                    Baud rate to use [default: 115200]
         --databits <databits>            Data bits (5, 6, 7, 8) [default: 8]
-        --eol <eol>                      End of line character to use (cr, lf, crlf) [default: crlf]
+        --enter <enter>                  Enter character to send (cr, lf, crlf) [default: cr]
         --flow <flow>                    Flow control (none, software, hardware) [default: none]
         --index <index>                  Return the index'th result
-    -m, --manufacturer <manufacturer>    Filter based on Manufacturer name
+    -m, --manufacturer <manufacturer>    Filter based on manufacturer name
         --parity <parity>                Parity checking (none, odd, even) [default: none]
         --pid <pid>                      Filter based on Product ID (PID)
     -p, --port <port>                    Filter based on name of port
