@@ -1,6 +1,6 @@
 [package]
 name = "serial-monitor"
-version = "0.0.5"
+version = "0.0.6"
 authors = ["Dave Hylands <dhylands@gmail.com>"]
 license = "MIT"
 keywords = ["serial", "communications", "terminal"]
