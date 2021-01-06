@@ -3,21 +3,18 @@ serial-monitor
 
 A serial monitor for USB Serial devices, written in rust.
 
-`serial-monitor` is a command line program which will conect to, and allow you to interact with devices
-which are connected to your host computer via USB serial adapters.
-
-`serial-monitor` has been tested on Mac OSX, and Linux. Currently there is an
-[issue](https://github.com/berkowski/mio-serial/issues/22)
-in mio-serial which prevents this from running properly on Windows.
+`serial-monitor` is a command line program which will connect to, and allow you to
+interact with USB serial devices connected to your host computer. It has been tested on
+Mac OSX, Linux and Windows.
 
 You can use the `--list` option to display all of the detected USB serial
-adapters, and you can use the `--vid`, `--pid`, `--port`, `--serial`, 
+devices, and you can use the `--vid`, `--pid`, `--port`, `--serial`, 
 `--manufacturer`, or `--product` options to filter your list.
 
 `serial-monitor` will open the first USB serial port which satifies the
 filtering criteria.
 
-Once, connected, you can use Control-X (or Control-Y if started with the -y option)
+Once connected, you can use Control-X (or Control-Y if started with the `-y` option)
 to exit from `serial-monitor` and return you to your prompt.
 
 Installation
@@ -47,31 +44,37 @@ This will build `serial-monitor` and install it into `~/.cargo/bin`
 Usage
 =====
 
-```bash
+```
 $ serial-monitor --help
-serial-monitor 0.0.4
+serial-monitor 0.0.5
 
 USAGE:
-    serial-monitor [FLAGS] [OPTIONS]
+    serial-monitor.exe [FLAGS] [OPTIONS]
 
 FLAGS:
     -y               Exit using Control-Y rather than Control-X
     -d, --debug      Turn on debugging
-    -f, --find       Like list, but only prints the name of the port that was found. This is useful for using from
-                     scripts or makefiles
+    -e, --echo
+    -f, --find       Like list, but only prints the name of the port that was found. This is 
+                     useful for using from scripts or makefiles
     -h, --help       Prints help information
-    -l, --list       List USB Serial devices which are currently connected
+    -l, --list       List USB serial devices which are currently connected
     -V, --version    Prints version information
     -v, --verbose    Turn on verbose messages
 
 OPTIONS:
     -b, --baud <baud>                    Baud rate to use [default: 115200]
+        --databits <databits>            Data bits (5, 6, 7, 8) [default: 8]
+        --enter <enter>                  Enter character to send (cr, lf, crlf) [default: cr]
+        --flow <flow>                    Flow control (none, software, hardware) [default: none]
         --index <index>                  Return the index'th result
-    -m, --manufacturer <manufacturer>    Filter based on Manufacturer name
+    -m, --manufacturer <manufacturer>    Filter based on manufacturer name
+        --parity <parity>                Parity checking (none, odd, even) [default: none]
         --pid <pid>                      Filter based on Product ID (PID)
     -p, --port <port>                    Filter based on name of port
         --product <product>              Filter based on product name
     -s, --serial <serial>                Filter based on serial number
+        --stopbits <stopbits>            Stop bits (1, 2) [default: 1]
         --vid <vid>                      Filter based on Vendor ID (VID)
 ```
 

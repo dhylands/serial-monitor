@@ -1,20 +1,26 @@
 #![recursion_limit = "256"] // Needed for select!
 
+use bytes::Bytes;
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures::{future::FutureExt, select, StreamExt};
-use mio_serial::{SerialPort, SerialPortInfo};
+use mio_serial::SerialPortInfo;
 use serialport::{SerialPortType, UsbPortInfo};
+use std::convert::TryFrom;
+use std::io;
 use std::io::Write;
+use std::result::Result as StdResult;
 use structopt::StructOpt;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-use tokio_util::codec::{BytesCodec, Decoder};
+use tokio_util::codec::BytesCodec;
 use wildmatch::WildMatch;
 
 mod error;
+mod string_decoder;
 use error::{ProgramError, Result};
+use string_decoder::StringDecoder;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "serial-monitor")]
@@ -23,7 +29,7 @@ struct Opt {
     #[structopt(short, long)]
     port: Option<String>,
 
-    /// Baud rate to use.
+    /// Baud rate to use
     #[structopt(short, long, default_value = "115200")]
     baud: u32,
 
@@ -32,11 +38,16 @@ struct Opt {
     debug: bool,
 
     // Turn on local echo
-    // #[structopt(short, long)]
-    // echo: bool,
-    /// List USB Serial devices which are currently connected
+    #[structopt(short, long)]
+    echo: bool,
+
+    /// List USB serial devices which are currently connected
     #[structopt(short, long)]
     list: bool,
+
+    /// Enter character to send (cr, lf, crlf)
+    #[structopt(long, default_value = "cr")]
+    enter: Eol,
 
     /// Like list, but only prints the name of the port that was found.
     /// This is useful for using from scripts or makefiles.
@@ -59,7 +70,7 @@ struct Opt {
     #[structopt(long)]
     pid: Option<String>,
 
-    /// Filter based on Manufacturer name
+    /// Filter based on manufacturer name
     #[structopt(short, long)]
     manufacturer: Option<String>,
 
@@ -74,6 +85,123 @@ struct Opt {
     /// Return the index'th result
     #[structopt(long)]
     index: Option<usize>,
+
+    /// Parity checking (none, odd, even)
+    #[structopt(long, default_value = "none")]
+    parity: ParityOpt,
+
+    /// Stop bits (1, 2)
+    #[structopt(long, default_value = "1")]
+    stopbits: usize,
+
+    /// Flow control (none, software, hardware)
+    #[structopt(long, default_value = "none")]
+    flow: FlowControlOpt,
+
+    /// Data bits (5, 6, 7, 8)
+    #[structopt(long, default_value = "8")]
+    databits: usize,
+}
+
+struct DataBitsOpt(DataBits);
+
+impl TryFrom<usize> for DataBitsOpt {
+    type Error = io::Error;
+
+    fn try_from(value: usize) -> StdResult<Self, io::Error> {
+        match value {
+            5 => Ok(Self(DataBits::Five)),
+            6 => Ok(Self(DataBits::Six)),
+            7 => Ok(Self(DataBits::Seven)),
+            8 => Ok(Self(DataBits::Eight)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "databits out of range",
+            )),
+        }
+    }
+}
+
+/// Flow control modes
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "snake_case")]
+enum FlowControlOpt {
+    /// No flow control.
+    None,
+    /// Flow control using XON/XOFF bytes.
+    Software,
+    /// Flow control using RTS/CTS signals.
+    Hardware,
+}
+
+impl From<FlowControlOpt> for FlowControl {
+    fn from(opt: FlowControlOpt) -> Self {
+        match opt {
+            FlowControlOpt::None => FlowControl::None,
+            FlowControlOpt::Software => FlowControl::Software,
+            FlowControlOpt::Hardware => FlowControl::Hardware,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "snake_case")]
+enum ParityOpt {
+    /// No parity bit.
+    None,
+    /// Parity bit sets odd number of 1 bits.
+    Odd,
+    /// Parity bit sets even number of 1 bits.
+    Even,
+}
+
+impl From<ParityOpt> for Parity {
+    fn from(opt: ParityOpt) -> Self {
+        match opt {
+            ParityOpt::None => Parity::None,
+            ParityOpt::Odd => Parity::Odd,
+            ParityOpt::Even => Parity::Even,
+        }
+    }
+}
+
+struct StopBitsOpt(StopBits);
+
+impl TryFrom<usize> for StopBitsOpt {
+    type Error = io::Error;
+
+    fn try_from(value: usize) -> StdResult<Self, io::Error> {
+        match value {
+            1 => Ok(Self(StopBits::One)),
+            2 => Ok(Self(StopBits::Two)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                "stopbits out of range",
+            )),
+        }
+    }
+}
+
+/// End of line character options
+#[derive(Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[strum(serialize_all = "snake_case")]
+enum Eol {
+    /// Carriage return
+    Cr,
+    /// Carriage return, line feed
+    Crlf,
+    /// Line feed
+    Lf,
+}
+
+impl Eol {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Cr => &b"\r"[..],
+            Self::Crlf => &b"\r\n"[..],
+            Self::Lf => &b"\n"[..],
+        }
+    }
 }
 
 // Returns the lowercase version of the character which will cause
@@ -301,7 +429,7 @@ fn find_port(opt: &Opt) -> Result<String> {
 
 // Converts key events from crossterm into appropriate character/escape sequences which are then
 // sent over the serial connection.
-fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt) -> Result<()> {
+fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
     if opt.debug {
         println!("Event::{:?}\r", key_event);
     }
@@ -321,7 +449,7 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
 
     let key_str: Option<&[u8]> = match key_event.code {
         KeyCode::Backspace => Some(b"\x08"),
-        KeyCode::Enter => Some(b"\x0D"),
+        KeyCode::Enter => Some(opt.enter.bytes()),
         KeyCode::Left => Some(b"\x1b[D"),
         KeyCode::Right => Some(b"\x1b[C"),
         KeyCode::Home => Some(b"\x1b[H"),
@@ -343,7 +471,7 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
                     buf[0] = (buf[0] + 8) & 0x1f;
                     Some(&buf[0..1])
                 } else {
-                    None
+                    Some(ch.encode_utf8(&mut buf).as_bytes())
                 }
             } else {
                 Some(ch.encode_utf8(&mut buf).as_bytes())
@@ -355,26 +483,37 @@ fn handle_key_event(key_event: KeyEvent, tx_port: &mut dyn SerialPort, opt: &Opt
         if opt.debug {
             println!("Send: {}\r", hex_str(key_str));
         }
-        tx_port.write_all(key_str)?;
+        if opt.echo {
+            if let Ok(val) = std::str::from_utf8(key_str) {
+                print!("{}", val);
+                std::io::stdout().flush()?;
+            }
+        }
+        Ok(Some(Bytes::copy_from_slice(key_str)))
+    } else {
+        Ok(None)
     }
-
-    Ok(())
 }
 
 // Main function which collects input from the user and sends it over the serial link
 // and collects serial data and presents it to the user.
 async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
-    let mut tx_port = port.try_clone()?;
-    let mut serial_reader = BytesCodec::new().framed(port);
+    let (rx_port, tx_port) = tokio::io::split(port);
+
+    let mut serial_reader = tokio_util::codec::FramedRead::new(rx_port, StringDecoder::new());
+    let serial_sink = tokio_util::codec::FramedWrite::new(tx_port, BytesCodec::new());
+    let (serial_writer, serial_consumer) = futures::channel::mpsc::unbounded::<Bytes>();
 
     let exit_code = exit_code(opt);
 
+    let mut poll_send = serial_consumer.map(Ok).forward(serial_sink);
     loop {
         let mut event = reader.next().fuse();
         let mut serial_event = serial_reader.next().fuse();
 
         select! {
+            _ = poll_send => {}
             maybe_event = event => {
                 match maybe_event {
                     Some(Ok(event)) => {
@@ -382,7 +521,9 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                             break;
                         }
                         if let Event::Key(key_event) = event {
-                            handle_key_event(key_event, tx_port.as_mut(), opt)?;
+                            if let Some(key) = handle_key_event(key_event, opt)? {
+                                serial_writer.unbounded_send(key).unwrap();
+                            }
                         } else {
                             println!("Unrecognized Event::{:?}\r", event);
                         }
@@ -399,7 +540,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                         if opt.debug {
                             println!("Serial Event:{:?}\r", serial_event);
                         } else {
-                            print!("{}", String::from_utf8_lossy(&serial_event));
+                            print!("{}", serial_event);
                             std::io::stdout().flush()?;
                         }
                     },
@@ -456,10 +597,10 @@ async fn real_main() -> Result<()> {
     // Do the serial port monitoring
     let mut settings = tokio_serial::SerialPortSettings::default();
     settings.baud_rate = opt.baud;
-    settings.data_bits = DataBits::Eight;
-    settings.parity = Parity::None;
-    settings.stop_bits = StopBits::One;
-    settings.flow_control = FlowControl::None;
+    settings.data_bits = DataBitsOpt::try_from(opt.databits)?.0;
+    settings.parity = Parity::from(opt.parity);
+    settings.stop_bits = StopBitsOpt::try_from(opt.stopbits)?.0;
+    settings.flow_control = FlowControl::from(opt.flow);
 
     let port_name = find_port(&opt)?;
     let err_port_name = port_name.clone();
