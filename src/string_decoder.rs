@@ -30,7 +30,7 @@ impl Decoder for StringDecoder {
         match str::from_utf8(&src) {
             Err(err) if err.valid_up_to() > 0 => {
                 // Split the bytes that are valid utf8 and turn it into &str.
-                let split_bytes = src.split_off(err.valid_up_to());
+                let split_bytes = src.split_to(err.valid_up_to());
                 let valid_str = unsafe { str::from_utf8_unchecked(&split_bytes) };
 
                 let (ref mut index, _) = self.incomplete;
@@ -55,7 +55,7 @@ impl Decoder for StringDecoder {
                 let (ref mut index, ref mut buf) = self.incomplete;
 
                 // Index is always less than 4, because of below.
-                buf[*index] = src.split_off(1)[0];
+                buf[*index] = src.split_to(1)[0];
                 *index += 1;
 
                 // Check if char is valid
