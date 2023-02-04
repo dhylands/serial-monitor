@@ -21,7 +21,7 @@ futures-timer = "3.0"
 mio-serial = "3.3.1"
 serialport = "3.3.0"
 structopt = "0.3"
-tokio = { version = "0.2.11", features = ["full"] }
+tokio = { version = "1.16.1", features = ["full"] }
 tokio-util = { version = "0.3.1", features = ["codec"] }
 tokio-serial = "4.3.3"
 wildmatch = "1.0.9"
