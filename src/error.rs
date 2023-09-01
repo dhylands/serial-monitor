@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[allow(dead_code)]
 pub enum ProgramError {
     NoPortFound,
     UnableToOpen(String, std::io::Error),
@@ -10,11 +11,6 @@ pub enum ProgramError {
 
 impl std::error::Error for ProgramError {}
 
-impl From<crossterm::ErrorKind> for ProgramError {
-    fn from(_err: crossterm::ErrorKind) -> ProgramError {
-        ProgramError::CrossTermError
-    }
-}
 
 impl From<std::io::Error> for ProgramError {
     fn from(err: std::io::Error) -> ProgramError {
