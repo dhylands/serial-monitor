@@ -2,19 +2,19 @@
 
 use bytes::Bytes;
 use crossterm::{
-    event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
+    event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers, KeyEventState, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use futures::{future::FutureExt, select, StreamExt};
 use mio_serial::SerialPortInfo;
 use serialport::{SerialPortType, UsbPortInfo};
-use std::convert::TryFrom;
+use std::{convert::TryFrom};
 use std::io;
 use std::io::Write;
 use std::result::Result as StdResult;
 use structopt::StructOpt;
-use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-use tokio_util::codec::BytesCodec;
+use tokio_serial::{DataBits, FlowControl, Parity, StopBits, SerialPortBuilderExt};
+use tokio_util::codec::{BytesCodec};
 use wildmatch::WildMatch;
 
 mod error;
@@ -29,7 +29,7 @@ struct Opt {
     #[structopt(short, long)]
     port: Option<String>,
 
-    /// Baud rate to use
+    /// Baud rate to use. XXX. 
     #[structopt(short, long, default_value = "115200")]
     baud: u32,
 
@@ -220,6 +220,8 @@ fn exit_code(opt: &Opt) -> Event {
     Event::Key(KeyEvent {
         code: KeyCode::Char(exit_char(opt)),
         modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state:KeyEventState::NONE
     })
 }
 
@@ -271,11 +273,11 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
             if pattern.contains('*') || pattern.contains('?') {
                 // If any wildcards are present, then we assume that the
                 // pattern is fully specified
-                WildMatch::new(&pattern).is_match(&str)
+                WildMatch::new(&pattern).matches(&str)
             } else {
                 // Since no wildcard were specified we treat it as if there
                 // was a '*' at each end.
-                WildMatch::new(&format!("*{}*", pattern)).is_match(&str)
+                WildMatch::new(&format!("*{}*", pattern)).matches(&str)
             }
         }
         None => {
@@ -497,7 +499,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
 
 // Main function which collects input from the user and sends it over the serial link
 // and collects serial data and presents it to the user.
-async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
+async fn monitor(port: tokio_serial::SerialStream, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
     let (rx_port, tx_port) = tokio::io::split(port);
 
@@ -518,7 +520,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                 match maybe_event {
                     Some(Ok(event)) => {
                         if event == exit_code {
-                            break;
+                            break Ok(());
                         }
                         if let Event::Key(key_event) = event {
                             if let Some(key) = handle_key_event(key_event, opt)? {
@@ -547,7 +549,7 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
                     Some(Err(e)) => {
                         println!("Serial Error: {:?}\r", e);
                         // This most likely means that the serial port has been unplugged.
-                        break;
+                        break Ok(());
                     },
                     None => {
                         println!("maybe_serial returned None\r");
@@ -556,9 +558,8 @@ async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
             },
         };
     }
-
-    Ok(())
 }
+
 
 // Main entry point to the program.
 #[tokio::main]
@@ -595,23 +596,29 @@ async fn real_main() -> Result<()> {
     }
 
     // Do the serial port monitoring
-    let mut settings = tokio_serial::SerialPortSettings::default();
-    settings.baud_rate = opt.baud;
-    settings.data_bits = DataBitsOpt::try_from(opt.databits)?.0;
-    settings.parity = Parity::from(opt.parity);
-    settings.stop_bits = StopBitsOpt::try_from(opt.stopbits)?.0;
-    settings.flow_control = FlowControl::from(opt.flow);
-
     let port_name = find_port(&opt)?;
-    let err_port_name = port_name.clone();
-    let mut port = tokio_serial::Serial::from_path(port_name.clone(), &settings)
-        .map_err(|e| ProgramError::UnableToOpen(err_port_name, e))?;
+    
+    let port = tokio_serial::new(port_name.clone(), opt.baud)
+    .flow_control(FlowControl::from(opt.flow))
+    .parity(Parity::from(opt.parity))
+    .data_bits(DataBitsOpt::try_from(opt.databits)?.0)
+    .stop_bits(StopBitsOpt::try_from(opt.stopbits)?.0)
+    .flow_control(FlowControl::from(opt.flow))
+    .open_native_async()
+    .expect("Failed to open port");
 
     println!("Connected to {}", port_name);
     println!("Press {} to exit", exit_label(&opt));
     enable_raw_mode()?;
-    let result = monitor(&mut port, &opt).await;
+
+    match  monitor(port, &opt).await {
+        Ok(()) => (),
+        Err(err) => {
+            writeln!(&mut std::io::stderr(), "Error: {:?}", err)?;
+            std::process::exit(2);
+        }
+    }
     disable_raw_mode()?;
     println!();
-    result
+    Ok(())
 }
