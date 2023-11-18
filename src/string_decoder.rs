@@ -2,7 +2,7 @@ use bytes::BytesMut;
 use std::{char, str};
 use tokio_util::codec::Decoder;
 
-/// A lossy string decoder that replaces unrecognized characters with [`REPLACEMENT_CHAR`](std::char::REPLACEMENT_CHAR).
+/// A lossy string decoder that replaces unrecognized characters with [`REPLACEMENT_CHAR`](std::char::REPLACEMENT_CHARACTER).
 pub struct StringDecoder {
     /// An incomplete `char` value being decoded from the stream.
     /// `char`s are always four bytes in length.

@@ -17,6 +17,7 @@ description = "Cross platform command line serial terminal program."
 [dependencies]
 bytes = "1.5.0"
 clap = { version = "4.4.8", features = ["derive"] }
+clap_complete = "4.4.4"
 color-eyre = "0.6.2"
 crossterm = { version = "0.27", features = ["event-stream"] }
 eyre = "0.6.9"

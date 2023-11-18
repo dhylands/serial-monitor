@@ -3,14 +3,15 @@
 use std::{
     convert::TryFrom,
     fmt::Display,
-    io::{self, Write},
+    io::{self, stdout, Write},
     ops::Deref,
     process::ExitCode,
     result::Result as StdResult,
 };
 
 use bytes::Bytes;
-use clap::{Parser, ValueEnum};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -28,43 +29,80 @@ use string_decoder::StringDecoder;
 
 #[derive(Parser, Debug)]
 #[command(name = "serial-monitor", version, about)]
-struct Opt {
-    /// Filter based on name of port
-    #[arg(short, long)]
-    port: Option<String>,
+struct Cli {
+    #[command(subcommand)]
+    subcommand: Option<Command>,
 
-    /// Baud rate to use
-    #[arg(short, long, default_value = "115200")]
-    baud: u32,
+    #[command(flatten)]
+    #[group(id = "foo")]
+    filter: Filter,
+
+    #[command(flatten)]
+    config: Config,
 
     /// Turn on debugging
     #[arg(short, long)]
     debug: bool,
 
-    // Turn on local echo
+    /// Turn on verbose messages
     #[arg(short, long)]
-    echo: bool,
+    verbose: bool,
+}
 
+#[derive(Debug, Subcommand)]
+enum Command {
     /// List USB serial devices which are currently connected
-    #[arg(short, long)]
-    list: bool,
+    List,
+    /// Like list, but only prints the name of the port that was found.
+    /// This is useful for using from scripts or makefiles.
+    Find,
+    /// Generate tab completion
+    Completion {
+        /// Shell to generate the completion for
+        shell: Shell,
+    },
+}
+
+#[derive(Debug, Clone, Args)]
+struct Config {
+    /// Baud rate to use
+    #[arg(short, long, default_value = "115200")]
+    baud: u32,
 
     /// Enter character to send (cr, lf, crlf)
     #[arg(long, default_value = "cr")]
     enter: Eol,
 
-    /// Like list, but only prints the name of the port that was found.
-    /// This is useful for using from scripts or makefiles.
-    #[arg(short, long)]
-    find: bool,
-
-    /// Turn on verbose messages
-    #[arg(short, long)]
-    verbose: bool,
-
     /// Exit using Control-Y rather than Control-X
     #[arg(short = 'y')]
     ctrl_y_exit: bool,
+
+    /// Parity checking (none, odd, even)
+    #[arg(long, default_value = "none")]
+    parity: ParityOpt,
+
+    /// Stop bits (1, 2)
+    #[arg(long, default_value = "1")]
+    stopbits: usize,
+
+    /// Flow control (none, software, hardware)
+    #[arg(long, default_value = "none")]
+    flow: FlowControlOpt,
+
+    /// Data bits (5, 6, 7, 8)
+    #[arg(long, default_value = "8")]
+    databits: usize,
+
+    // Turn on local echo
+    #[arg(short, long)]
+    echo: bool,
+}
+
+#[derive(Debug, Clone, Args)]
+struct Filter {
+    /// Filter based on name of port
+    #[arg(short, long)]
+    port: Option<String>,
 
     /// Filter based on Vendor ID (VID)
     #[arg(long)]
@@ -89,22 +127,6 @@ struct Opt {
     /// Return the index'th result
     #[arg(long)]
     index: Option<usize>,
-
-    /// Parity checking (none, odd, even)
-    #[arg(long, default_value = "none")]
-    parity: ParityOpt,
-
-    /// Stop bits (1, 2)
-    #[arg(long, default_value = "1")]
-    stopbits: usize,
-
-    /// Flow control (none, software, hardware)
-    #[arg(long, default_value = "none")]
-    flow: FlowControlOpt,
-
-    /// Data bits (5, 6, 7, 8)
-    #[arg(long, default_value = "8")]
-    databits: usize,
 }
 
 struct DataBitsOpt(DataBits);
@@ -148,10 +170,11 @@ impl From<FlowControlOpt> for FlowControl {
     }
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Default, Clone, Copy, Debug, ValueEnum, strum::EnumString, strum::EnumVariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum ParityOpt {
     /// No parity bit.
+    #[default]
     None,
     /// Parity bit sets odd number of 1 bits.
     Odd,
@@ -187,10 +210,11 @@ impl TryFrom<usize> for StopBitsOpt {
 }
 
 /// End of line character options
-#[derive(Debug, Clone, Copy, ValueEnum, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Debug, Default, Clone, Copy, ValueEnum, strum::EnumString, strum::EnumVariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum Eol {
     /// Carriage return
+    #[default]
     Cr,
     /// Carriage return, line feed
     Crlf,
@@ -201,17 +225,17 @@ enum Eol {
 impl Eol {
     fn bytes(&self) -> &[u8] {
         match self {
-            Self::Cr => &b"\r"[..],
-            Self::Crlf => &b"\r\n"[..],
-            Self::Lf => &b"\n"[..],
+            Self::Cr => b"\r",
+            Self::Crlf => b"\r\n",
+            Self::Lf => b"\n",
         }
     }
 }
 
 // Returns the lowercase version of the character which will cause
 // serial-monitor to exit.
-fn exit_char(opt: &Opt) -> char {
-    if opt.ctrl_y_exit {
+fn exit_char(config: &Config) -> char {
+    if config.ctrl_y_exit {
         'y'
     } else {
         'x'
@@ -220,9 +244,9 @@ fn exit_char(opt: &Opt) -> char {
 
 // Returns the Event::Key variant of the exit character which will
 // cause the serial monitor to exit.
-fn exit_code(opt: &Opt) -> Event {
+fn exit_code(config: &Config) -> Event {
     Event::Key(KeyEvent {
-        code: KeyCode::Char(exit_char(opt)),
+        code: KeyCode::Char(exit_char(config)),
         modifiers: KeyModifiers::CONTROL,
         kind: KeyEventKind::Press,
         state: KeyEventState::NONE,
@@ -230,8 +254,8 @@ fn exit_code(opt: &Opt) -> Event {
 }
 
 // Returns a human readable string of the exit character.
-fn exit_label(opt: &Opt) -> String {
-    format!("Control-{}", exit_char(opt).to_ascii_uppercase())
+fn exit_label(config: &Config) -> String {
+    format!("Control-{}", exit_char(config).to_ascii_uppercase())
 }
 
 // Converts a byte string into a string comprised of each byte
@@ -271,13 +295,13 @@ fn hex_str(bytes: &[u8]) -> String {
 }
 
 // Checks to see if a string matches a pattern used for filtering.
-fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
-    let result = match pattern.clone() {
+fn matches(str: &str, pattern: Option<&str>, debug: bool) -> bool {
+    let result = match pattern {
         Some(pattern) => {
             if pattern.contains('*') || pattern.contains('?') {
                 // If any wildcards are present, then we assume that the
                 // pattern is fully specified
-                WildMatch::new(&pattern).matches(str)
+                WildMatch::new(pattern).matches(str)
             } else {
                 // Since no wildcard were specified we treat it as if there
                 // was a '*' at each end.
@@ -290,7 +314,7 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
             true
         }
     };
-    if opt.debug {
+    if debug {
         println!(
             "matches(str:{:?}, pattern:{:?}) -> {:?}",
             str, pattern, result
@@ -300,15 +324,15 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
 }
 
 // Similar to matches but checks to see if an Option<String> matches a pattern.
-fn matches_opt(str: Option<String>, pattern: Option<String>, opt: &Opt) -> bool {
+fn matches_opt(str: Option<&str>, pattern: Option<&str>, debug: bool) -> bool {
     if let Some(str) = str {
-        matches(&str, pattern, opt)
+        matches(str, pattern, debug)
     } else {
         // If no pattern was specified, then we don't care if there was a string
         // supplied or not. But if we're looking for a particular patterm, then
         // it needs to match.
         let result = pattern.is_none();
-        if opt.debug {
+        if debug {
             println!(
                 "matches_opt(str:{:?}, pattern:{:?}) -> {:?}",
                 str, pattern, result
@@ -352,30 +376,38 @@ fn available_ports() -> color_eyre::Result<Vec<SerialPortInfo>> {
 }
 
 // Checks to see if a serial port matches the filtering criteria specified on the command line.
-fn usb_port_matches(idx: usize, port: &SerialPortInfo, opt: &Opt) -> bool {
+fn usb_port_matches(idx: usize, port: &SerialPortInfo, filter: &Filter, debug: bool) -> bool {
     let SerialPortType::UsbPort(info) = &port.port_type else {
         return false;
     };
 
-    if let Some(opt_idx) = opt.index {
+    if let Some(opt_idx) = filter.index {
         if opt_idx != idx {
             return false;
         }
     }
 
-    matches(&port.port_name, opt.port.clone(), opt)
-        && matches(&format!("{:04x}", info.vid), opt.vid.clone(), opt)
-        && matches(&format!("{:04x}", info.pid), opt.pid.clone(), opt)
-        && matches_opt(info.manufacturer.clone(), opt.manufacturer.clone(), opt)
-        && matches_opt(info.serial_number.clone(), opt.serial.clone(), opt)
-        && matches_opt(info.product.clone(), opt.product.clone(), opt)
+    matches(&port.port_name, filter.port.as_deref(), debug)
+        && matches(&format!("{:04x}", info.vid), filter.vid.as_deref(), debug)
+        && matches(&format!("{:04x}", info.pid), filter.pid.as_deref(), debug)
+        && matches_opt(
+            info.manufacturer.as_deref(),
+            filter.manufacturer.as_deref(),
+            debug,
+        )
+        && matches_opt(
+            info.serial_number.as_deref(),
+            filter.serial.as_deref(),
+            debug,
+        )
+        && matches_opt(info.product.as_deref(), filter.product.as_deref(), debug)
 }
 
-fn filtered_ports(opt: &Opt) -> color_eyre::Result<Vec<SerialPortInfo>> {
+fn filtered_ports(filter: &Filter, debug: bool) -> color_eyre::Result<Vec<SerialPortInfo>> {
     let mut ports: Vec<SerialPortInfo> = available_ports()?
         .into_iter()
         .enumerate()
-        .filter_map(|(idx, info)| usb_port_matches(idx, &info, opt).then_some(info))
+        .filter_map(|(idx, info)| usb_port_matches(idx, &info, filter, debug).then_some(info))
         .collect();
 
     ports.sort_by(|a, b| a.port_name.cmp(&b.port_name));
@@ -383,8 +415,8 @@ fn filtered_ports(opt: &Opt) -> color_eyre::Result<Vec<SerialPortInfo>> {
     Ok(ports)
 }
 
-fn filtered_port(opt: &Opt) -> color_eyre::Result<Option<SerialPortInfo>> {
-    let mut ports = filtered_ports(opt)?;
+fn filtered_port(filter: &Filter, debug: bool) -> color_eyre::Result<Option<SerialPortInfo>> {
+    let mut ports = filtered_ports(filter, debug)?;
 
     if ports.is_empty() {
         return Ok(None);
@@ -433,8 +465,8 @@ impl<'a> Display for ExtraInfo<'a> {
 }
 
 // Lists all of the USB serial ports which match the filtering criteria.
-fn list_ports(opt: &Opt) -> color_eyre::Result<()> {
-    for port in filtered_ports(opt)? {
+fn list_ports(opt: &Filter, debug: bool) -> color_eyre::Result<()> {
+    for port in filtered_ports(opt, debug)? {
         if let SerialPortType::UsbPort(info) = &port.port_type {
             println!(
                 "USB Serial Device{} found @{}",
@@ -449,14 +481,18 @@ fn list_ports(opt: &Opt) -> color_eyre::Result<()> {
 }
 
 // Returns the first port which matches the filtering criteria.
-fn find_port(opt: &Opt) -> color_eyre::Result<Option<String>> {
-    filtered_port(opt).map(|op| op.map(|port| port.port_name))
+fn find_port(filter: &Filter, debug: bool) -> color_eyre::Result<Option<String>> {
+    filtered_port(filter, debug).map(|op| op.map(|port| port.port_name))
 }
 
 // Converts key events from crossterm into appropriate character/escape sequences which are then
 // sent over the serial connection.
-fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> color_eyre::Result<Option<Bytes>> {
-    if opt.debug {
+fn handle_key_event(
+    key_event: KeyEvent,
+    config: &Config,
+    debug: bool,
+) -> color_eyre::Result<Option<Bytes>> {
+    if debug {
         println!("Event::{:?}\r", key_event);
     }
 
@@ -475,7 +511,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> color_eyre::Result<Option
 
     let key_str: Option<&[u8]> = match key_event.code {
         KeyCode::Backspace => Some(b"\x08"),
-        KeyCode::Enter => Some(opt.enter.bytes()),
+        KeyCode::Enter => Some(config.enter.bytes()),
         KeyCode::Left => Some(b"\x1b[D"),
         KeyCode::Right => Some(b"\x1b[C"),
         KeyCode::Home => Some(b"\x1b[H"),
@@ -506,10 +542,10 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> color_eyre::Result<Option
         _ => None,
     };
     if let Some(key_str) = key_str {
-        if opt.debug {
+        if debug {
             println!("Send: {}\r", hex_str(key_str));
         }
-        if opt.echo {
+        if config.echo {
             if let Ok(val) = std::str::from_utf8(key_str) {
                 print!("{}", val);
                 std::io::stdout().flush()?;
@@ -523,7 +559,11 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> color_eyre::Result<Option
 
 // Main function which collects input from the user and sends it over the serial link
 // and collects serial data and presents it to the user.
-async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> color_eyre::Result<()> {
+async fn monitor(
+    port: &mut tokio_serial::SerialStream,
+    config: &Config,
+    debug: bool,
+) -> color_eyre::Result<()> {
     let mut reader = EventStream::new();
     let (rx_port, tx_port) = tokio::io::split(port);
 
@@ -531,7 +571,7 @@ async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> color_eyre
     let serial_sink = tokio_util::codec::FramedWrite::new(tx_port, BytesCodec::new());
     let (serial_writer, serial_consumer) = futures::channel::mpsc::unbounded::<Bytes>();
 
-    let exit_code = exit_code(opt);
+    let exit_code = exit_code(config);
 
     let mut poll_send = serial_consumer.map(Ok).forward(serial_sink);
     loop {
@@ -547,7 +587,7 @@ async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> color_eyre
                             break;
                         }
                         if let Event::Key(key_event) = event {
-                            if let Some(key) = handle_key_event(key_event, opt)? {
+                            if let Some(key) = handle_key_event(key_event, config, debug)? {
                                 serial_writer.unbounded_send(key).unwrap();
                             }
                         } else {
@@ -563,7 +603,7 @@ async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> color_eyre
             maybe_serial = serial_event => {
                 match maybe_serial {
                     Some(Ok(serial_event)) => {
-                        if opt.debug {
+                        if debug {
                             println!("Serial Event:{:?}\r", serial_event);
                         } else {
                             print!("{}", serial_event);
@@ -586,49 +626,60 @@ async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> color_eyre
     Ok(())
 }
 
-// Main entry point to the program.
+fn no_usp_ports_found() -> ExitCode {
+    eprintln!("No USB ports found");
+    ExitCode::from(1)
+}
+
 #[tokio::main]
 async fn main() -> color_eyre::Result<ExitCode> {
-    let opt = Opt::parse();
+    let cli = Cli::parse();
 
     color_eyre::install()?;
 
-    if opt.verbose {
-        eprintln!("{:#?}", opt);
+    if cli.verbose {
+        eprintln!("{:#?}", cli);
     }
 
-    if opt.list {
-        list_ports(&opt)?;
-        return Ok(ExitCode::SUCCESS);
+    match cli.subcommand {
+        Some(Command::Completion { shell }) => {
+            clap_complete::generate(shell, &mut Cli::command(), "serial-monitor", &mut stdout());
+        }
+        Some(Command::List) => {
+            list_ports(&cli.filter, cli.debug)?;
+        }
+        Some(Command::Find) => {
+            let Some(port_name) = find_port(&cli.filter, cli.debug)? else {
+                return Ok(no_usp_ports_found());
+            };
+
+            println!("{port_name}");
+        }
+        None => {
+            let Some(port_name) = find_port(&cli.filter, cli.debug)? else {
+                return Ok(no_usp_ports_found());
+            };
+
+            let config = cli.config;
+            // Do the serial port monitoring
+            let mut port = tokio_serial::new(&port_name, config.baud)
+                .data_bits(DataBitsOpt::try_from(config.databits)?.0)
+                .parity(Parity::from(config.parity))
+                .stop_bits(StopBitsOpt::try_from(config.stopbits)?.0)
+                .flow_control(FlowControl::from(config.flow))
+                .open_native_async()
+                .wrap_err_with(|| format!("Unable to open {port_name}"))?;
+
+            println!("Connected to {}", port_name);
+            println!("Press {} to exit", exit_label(&config));
+            enable_raw_mode()?;
+            let result = monitor(&mut port, &config, cli.debug).await;
+            disable_raw_mode()?;
+            println!();
+
+            result?;
+        }
     }
-
-    let Some(port_name) = find_port(&opt)? else {
-        eprintln!("No USB ports found");
-        return Ok(ExitCode::from(1));
-    };
-
-    if opt.find {
-        println!("{port_name}");
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    // Do the serial port monitoring
-    let mut port = tokio_serial::new(&port_name, opt.baud)
-        .data_bits(DataBitsOpt::try_from(opt.databits)?.0)
-        .parity(Parity::from(opt.parity))
-        .stop_bits(StopBitsOpt::try_from(opt.stopbits)?.0)
-        .flow_control(FlowControl::from(opt.flow))
-        .open_native_async()
-        .wrap_err_with(|| format!("Unable to open {port_name}"))?;
-
-    println!("Connected to {}", port_name);
-    println!("Press {} to exit", exit_label(&opt));
-    enable_raw_mode()?;
-    let result = monitor(&mut port, &opt).await;
-    disable_raw_mode()?;
-    println!();
-
-    result?;
 
     Ok(ExitCode::SUCCESS)
 }
