@@ -35,10 +35,17 @@
           strictDeps = true;
           nativeBuildInputs = with pkgs; [
             pkg-config
+            installShellFiles
           ];
           buildInputs = with pkgs; [
             systemdMinimal
           ];
+          postInstall = ''
+            installShellCompletion --cmd serial-monitor \
+              --bash <($out/bin/serial-monitor completion bash) \
+              --fish <($out/bin/serial-monitor completion fish) \
+              --zsh <($out/bin/serial-monitor completion zsh)
+          '';
         };
         default = packages.serial-monitor;
       };
