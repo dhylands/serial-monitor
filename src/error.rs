@@ -23,7 +23,7 @@ impl From<mio_serial::Error> for ProgramError {
 
 impl fmt::Debug for ProgramError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &*self {
+        match self {
             ProgramError::NoPortFound => {
                 write!(f, "No USB serial adapter found which matches criteria.")
             }

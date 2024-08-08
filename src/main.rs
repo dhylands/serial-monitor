@@ -271,11 +271,11 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
             if pattern.contains('*') || pattern.contains('?') {
                 // If any wildcards are present, then we assume that the
                 // pattern is fully specified
-                WildMatch::new(&pattern).matches(&str)
+                WildMatch::new(&pattern).matches(str)
             } else {
                 // Since no wildcard were specified we treat it as if there
                 // was a '*' at each end.
-                WildMatch::new(&format!("*{}*", pattern)).matches(&str)
+                WildMatch::new(&format!("*{}*", pattern)).matches(str)
             }
         }
         None => {
@@ -364,7 +364,7 @@ fn usb_port_matches(port: &SerialPortInfo, opt: &Opt) -> bool {
 fn filtered_ports(opt: &Opt) -> Result<Vec<SerialPortInfo>> {
     let mut ports: Vec<SerialPortInfo> = available_ports()?
         .into_iter()
-        .filter(|info| usb_port_matches(&info, opt))
+        .filter(|info| usb_port_matches(info, opt))
         .collect();
     ports.sort_by(|a, b| a.port_name.cmp(&b.port_name));
     if let Some(index) = opt.index {
@@ -412,7 +412,7 @@ fn list_ports(opt: &Opt) -> Result<()> {
         if let SerialPortType::UsbPort(info) = &port.port_type {
             println!(
                 "USB Serial Device{} found @{}",
-                extra_usb_info(&info),
+                extra_usb_info(info),
                 port.port_name
             );
         } else {
@@ -463,10 +463,10 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
         KeyCode::Char(ch) => {
             if key_event.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
                 buf[0] = ch as u8;
-                if (ch >= 'a' && ch <= 'z') || (ch == ' ') {
+                if ch.is_ascii_lowercase() || (ch == ' ') {
                     buf[0] &= 0x1f;
                     Some(&buf[0..1])
-                } else if ch >= '4' && ch <= '7' {
+                } else if ('4'..='7').contains(&ch) {
                     // crossterm returns Control-4 thru 7 for \x1c thru \x1f
                     buf[0] = (buf[0] + 8) & 0x1f;
                     Some(&buf[0..1])
