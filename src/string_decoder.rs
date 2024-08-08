@@ -1,6 +1,6 @@
 use crate::ProgramError;
-use bytes::BytesMut;
 use std::{char, str};
+use tokio_util::bytes::BytesMut;
 use tokio_util::codec::Decoder;
 
 /// A lossy string decoder that replaces unrecognized characters with [`REPLACEMENT_CHAR`](std::char::REPLACEMENT_CHAR).

@@ -1,6 +1,5 @@
 #![recursion_limit = "256"] // Needed for select!
 
-use bytes::Bytes;
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -14,6 +13,7 @@ use std::io::Write;
 use std::result::Result as StdResult;
 use structopt::StructOpt;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
+use tokio_util::bytes::Bytes;
 use tokio_util::codec::BytesCodec;
 use wildmatch::WildMatch;
 
@@ -271,11 +271,11 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
             if pattern.contains('*') || pattern.contains('?') {
                 // If any wildcards are present, then we assume that the
                 // pattern is fully specified
-                WildMatch::new(&pattern).is_match(&str)
+                WildMatch::new(&pattern).matches(&str)
             } else {
                 // Since no wildcard were specified we treat it as if there
                 // was a '*' at each end.
-                WildMatch::new(&format!("*{}*", pattern)).is_match(&str)
+                WildMatch::new(&format!("*{}*", pattern)).matches(&str)
             }
         }
         None => {
@@ -497,7 +497,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
 
 // Main function which collects input from the user and sends it over the serial link
 // and collects serial data and presents it to the user.
-async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
+async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
     let (rx_port, tx_port) = tokio::io::split(port);
 
@@ -594,18 +594,18 @@ async fn real_main() -> Result<()> {
         return Ok(());
     }
 
-    // Do the serial port monitoring
-    let mut settings = tokio_serial::SerialPortSettings::default();
-    settings.baud_rate = opt.baud;
-    settings.data_bits = DataBitsOpt::try_from(opt.databits)?.0;
-    settings.parity = Parity::from(opt.parity);
-    settings.stop_bits = StopBitsOpt::try_from(opt.stopbits)?.0;
-    settings.flow_control = FlowControl::from(opt.flow);
-
     let port_name = find_port(&opt)?;
+
+    // Do the serial port monitoring
+    let port_builder = tokio_serial::new(&port_name, opt.baud)
+        .data_bits(DataBitsOpt::try_from(opt.databits)?.0)
+        .parity(opt.parity.into())
+        .stop_bits(StopBitsOpt::try_from(opt.stopbits)?.0)
+        .flow_control(opt.flow.into());
+
     let err_port_name = port_name.clone();
-    let mut port = tokio_serial::Serial::from_path(port_name.clone(), &settings)
-        .map_err(|e| ProgramError::UnableToOpen(err_port_name, e))?;
+    let mut port = tokio_serial::SerialStream::open(&port_builder)
+        .map_err(|e| ProgramError::UnableToOpen(err_port_name, e.into()))?;
 
     println!("Connected to {}", port_name);
     println!("Press {} to exit", exit_label(&opt));
