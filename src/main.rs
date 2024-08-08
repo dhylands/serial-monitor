@@ -123,7 +123,7 @@ impl TryFrom<usize> for DataBitsOpt {
 }
 
 /// Flow control modes
-#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::VariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum FlowControlOpt {
     /// No flow control.
@@ -144,7 +144,7 @@ impl From<FlowControlOpt> for FlowControl {
     }
 }
 
-#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::VariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum ParityOpt {
     /// No parity bit.
@@ -183,7 +183,7 @@ impl TryFrom<usize> for StopBitsOpt {
 }
 
 /// End of line character options
-#[derive(Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Debug, StructOpt, strum::EnumString, strum::VariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum Eol {
     /// Carriage return
@@ -217,10 +217,10 @@ fn exit_char(opt: &Opt) -> char {
 // Returns the Event::Key variant of the exit character which will
 // cause the serial monitor to exit.
 fn exit_code(opt: &Opt) -> Event {
-    Event::Key(KeyEvent {
-        code: KeyCode::Char(exit_char(opt)),
-        modifiers: KeyModifiers::CONTROL,
-    })
+    Event::Key(KeyEvent::new(
+        KeyCode::Char(exit_char(opt)),
+        KeyModifiers::CONTROL,
+    ))
 }
 
 // Returns a human readable string of the exit character.

@@ -15,7 +15,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossterm = { version = "0.18", features = ["event-stream"] }
+crossterm = { version = "0.28", features = ["event-stream"] }
 futures = { version = "0.3" }
 mio-serial = "5.0"
 serialport = "4.5"
@@ -24,4 +24,4 @@ tokio = { version = "1.16.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-serial = "5.4"
 wildmatch = "2.3"
-strum = { version = "0.19.5", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
