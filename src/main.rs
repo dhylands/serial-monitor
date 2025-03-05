@@ -1,6 +1,5 @@
 #![recursion_limit = "256"] // Needed for select!
 
-use bytes::Bytes;
 use crossterm::{
     event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -14,6 +13,7 @@ use std::io::Write;
 use std::result::Result as StdResult;
 use structopt::StructOpt;
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
+use tokio_util::bytes::Bytes;
 use tokio_util::codec::BytesCodec;
 use wildmatch::WildMatch;
 
@@ -123,7 +123,7 @@ impl TryFrom<usize> for DataBitsOpt {
 }
 
 /// Flow control modes
-#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::VariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum FlowControlOpt {
     /// No flow control.
@@ -144,7 +144,7 @@ impl From<FlowControlOpt> for FlowControl {
     }
 }
 
-#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Clone, Copy, Debug, StructOpt, strum::EnumString, strum::VariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum ParityOpt {
     /// No parity bit.
@@ -183,7 +183,7 @@ impl TryFrom<usize> for StopBitsOpt {
 }
 
 /// End of line character options
-#[derive(Debug, StructOpt, strum::EnumString, strum::EnumVariantNames)]
+#[derive(Debug, StructOpt, strum::EnumString, strum::VariantNames)]
 #[strum(serialize_all = "snake_case")]
 enum Eol {
     /// Carriage return
@@ -217,10 +217,10 @@ fn exit_char(opt: &Opt) -> char {
 // Returns the Event::Key variant of the exit character which will
 // cause the serial monitor to exit.
 fn exit_code(opt: &Opt) -> Event {
-    Event::Key(KeyEvent {
-        code: KeyCode::Char(exit_char(opt)),
-        modifiers: KeyModifiers::CONTROL,
-    })
+    Event::Key(KeyEvent::new(
+        KeyCode::Char(exit_char(opt)),
+        KeyModifiers::CONTROL,
+    ))
 }
 
 // Returns a human readable string of the exit character.
@@ -271,11 +271,11 @@ fn matches(str: &str, pattern: Option<String>, opt: &Opt) -> bool {
             if pattern.contains('*') || pattern.contains('?') {
                 // If any wildcards are present, then we assume that the
                 // pattern is fully specified
-                WildMatch::new(&pattern).is_match(&str)
+                WildMatch::new(&pattern).matches(str)
             } else {
                 // Since no wildcard were specified we treat it as if there
                 // was a '*' at each end.
-                WildMatch::new(&format!("*{}*", pattern)).is_match(&str)
+                WildMatch::new(&format!("*{}*", pattern)).matches(str)
             }
         }
         None => {
@@ -364,7 +364,7 @@ fn usb_port_matches(port: &SerialPortInfo, opt: &Opt) -> bool {
 fn filtered_ports(opt: &Opt) -> Result<Vec<SerialPortInfo>> {
     let mut ports: Vec<SerialPortInfo> = available_ports()?
         .into_iter()
-        .filter(|info| usb_port_matches(&info, opt))
+        .filter(|info| usb_port_matches(info, opt))
         .collect();
     ports.sort_by(|a, b| a.port_name.cmp(&b.port_name));
     if let Some(index) = opt.index {
@@ -412,7 +412,7 @@ fn list_ports(opt: &Opt) -> Result<()> {
         if let SerialPortType::UsbPort(info) = &port.port_type {
             println!(
                 "USB Serial Device{} found @{}",
-                extra_usb_info(&info),
+                extra_usb_info(info),
                 port.port_name
             );
         } else {
@@ -463,10 +463,10 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
         KeyCode::Char(ch) => {
             if key_event.modifiers & KeyModifiers::CONTROL == KeyModifiers::CONTROL {
                 buf[0] = ch as u8;
-                if (ch >= 'a' && ch <= 'z') || (ch == ' ') {
+                if ch.is_ascii_lowercase() || (ch == ' ') {
                     buf[0] &= 0x1f;
                     Some(&buf[0..1])
-                } else if ch >= '4' && ch <= '7' {
+                } else if ('4'..='7').contains(&ch) {
                     // crossterm returns Control-4 thru 7 for \x1c thru \x1f
                     buf[0] = (buf[0] + 8) & 0x1f;
                     Some(&buf[0..1])
@@ -497,7 +497,7 @@ fn handle_key_event(key_event: KeyEvent, opt: &Opt) -> Result<Option<Bytes>> {
 
 // Main function which collects input from the user and sends it over the serial link
 // and collects serial data and presents it to the user.
-async fn monitor(port: &mut tokio_serial::Serial, opt: &Opt) -> Result<()> {
+async fn monitor(port: &mut tokio_serial::SerialStream, opt: &Opt) -> Result<()> {
     let mut reader = EventStream::new();
     let (rx_port, tx_port) = tokio::io::split(port);
 
@@ -594,18 +594,18 @@ async fn real_main() -> Result<()> {
         return Ok(());
     }
 
-    // Do the serial port monitoring
-    let mut settings = tokio_serial::SerialPortSettings::default();
-    settings.baud_rate = opt.baud;
-    settings.data_bits = DataBitsOpt::try_from(opt.databits)?.0;
-    settings.parity = Parity::from(opt.parity);
-    settings.stop_bits = StopBitsOpt::try_from(opt.stopbits)?.0;
-    settings.flow_control = FlowControl::from(opt.flow);
-
     let port_name = find_port(&opt)?;
+
+    // Do the serial port monitoring
+    let port_builder = tokio_serial::new(&port_name, opt.baud)
+        .data_bits(DataBitsOpt::try_from(opt.databits)?.0)
+        .parity(opt.parity.into())
+        .stop_bits(StopBitsOpt::try_from(opt.stopbits)?.0)
+        .flow_control(opt.flow.into());
+
     let err_port_name = port_name.clone();
-    let mut port = tokio_serial::Serial::from_path(port_name.clone(), &settings)
-        .map_err(|e| ProgramError::UnableToOpen(err_port_name, e))?;
+    let mut port = tokio_serial::SerialStream::open(&port_builder)
+        .map_err(|e| ProgramError::UnableToOpen(err_port_name, e.into()))?;
 
     println!("Connected to {}", port_name);
     println!("Press {} to exit", exit_label(&opt));

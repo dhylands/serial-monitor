@@ -1,6 +1,6 @@
 use crate::ProgramError;
-use bytes::BytesMut;
 use std::{char, str};
+use tokio_util::bytes::BytesMut;
 use tokio_util::codec::Decoder;
 
 /// A lossy string decoder that replaces unrecognized characters with [`REPLACEMENT_CHAR`](std::char::REPLACEMENT_CHAR).
@@ -27,7 +27,7 @@ impl Decoder for StringDecoder {
             return Ok(None);
         }
 
-        match str::from_utf8(&src) {
+        match str::from_utf8(src) {
             Err(err) if err.valid_up_to() > 0 => {
                 // Split the bytes that are valid utf8 and turn it into &str.
                 let split_bytes = src.split_to(err.valid_up_to());
