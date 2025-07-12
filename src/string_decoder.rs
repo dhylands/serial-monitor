@@ -55,7 +55,7 @@ impl Decoder for StringDecoder {
                 let (ref mut index, ref mut buf) = self.incomplete;
 
                 // Index is always less than 4, because of below.
-                buf[*index] = src.split_to(1)[0];
+                buf[*index] = src.split_to(1).get(0).unwrap_or_default();
                 *index += 1;
 
                 // Check if char is valid
