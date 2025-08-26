@@ -20,7 +20,7 @@ futures = { version = "0.3" }
 mio-serial = "5.0"
 serialport = "4.5"
 structopt = "0.3"
-tokio = { version = "1.16.1", features = ["full"] }
+tokio = { version = "1.43.1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-serial = "5.4"
 wildmatch = "2.3"
